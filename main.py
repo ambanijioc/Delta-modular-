@@ -430,11 +430,14 @@ class RootHandler(tornado.web.RequestHandler):
         })
 
 def make_app():
-    """Create Tornado application"""
+    """Create Tornado application with uptime-friendly routes"""
     return tornado.web.Application([
-        (r"/", RootHandler),
-        (rf"/{TELEGRAM_BOT_TOKEN}", WebhookHandler),
-        (r"/health", HealthHandler),
+        (r"/", RootHandler),                           # Main page
+        (r"/uptime", UptimeHandler),                   # Dedicated uptime endpoint
+        (r"/status", UptimeHandler),                   # Alternative uptime endpoint  
+        (r"/ping", UptimeHandler),                     # Simple ping endpoint
+        (rf"/{TELEGRAM_BOT_TOKEN}", WebhookHandler),   # Telegram webhook
+        (r"/health", HealthHandler),                   # Health check
     ])
 
 async def initialize_bot():
