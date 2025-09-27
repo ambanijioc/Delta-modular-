@@ -8,8 +8,8 @@ import tornado.web
 import tornado.ioloop
 import tornado.httpserver
 import json
-import signal
-import sys
+import threading
+import time
 
 from config.config import TELEGRAM_BOT_TOKEN, HOST, PORT
 from api.delta_client import DeltaClient
@@ -28,47 +28,58 @@ logger = logging.getLogger(__name__)
 
 # Global application instance
 application = None
-webhook_health_check_interval = 300  # 5 minutes
+webhook_monitor_active = False
 
-async def periodic_webhook_check():
-    """Periodically check and fix webhook if needed"""
-    global application
+def webhook_health_monitor():
+    """Background thread to monitor webhook health"""
+    global webhook_monitor_active, application
     
-    while True:
+    webhook_monitor_active = True
+    check_interval = 300  # 5 minutes
+    
+    while webhook_monitor_active:
         try:
-            await asyncio.sleep(webhook_health_check_interval)
+            time.sleep(check_interval)
+            
+            if not webhook_monitor_active or not application:
+                break
+                
             logger.info("🔍 Checking webhook health...")
             
-            # Get webhook info
-            webhook_info = await application.bot.get_webhook_info()
+            # Create new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             
-            if not webhook_info.url:
-                logger.warning("⚠️ Webhook not set, attempting to fix...")
-                success = await setup_webhook()
-                if success:
-                    logger.info("✅ Webhook restored successfully")
+            try:
+                # Get webhook info
+                webhook_info = loop.run_until_complete(application.bot.get_webhook_info())
+                
+                if not webhook_info.url:
+                    logger.warning("⚠️ Webhook not set, attempting to restore...")
+                    success = loop.run_until_complete(setup_webhook())
+                    if success:
+                        logger.info("✅ Webhook restored successfully")
+                elif webhook_info.pending_update_count > 100:
+                    logger.warning(f"⚠️ High pending updates: {webhook_info.pending_update_count}, resetting...")
+                    loop.run_until_complete(setup_webhook())
                 else:
-                    logger.error("❌ Failed to restore webhook")
-            elif webhook_info.pending_update_count > 50:
-                logger.warning(f"⚠️ High pending updates: {webhook_info.pending_update_count}")
-                # Consider clearing and resetting webhook if too many pending updates
-                if webhook_info.pending_update_count > 100:
-                    logger.warning("🔄 Resetting webhook due to high pending updates...")
-                    await setup_webhook()
-            else:
-                logger.info(f"✅ Webhook healthy - URL: {webhook_info.url[:50]}...")
+                    logger.info(f"✅ Webhook healthy - Pending: {webhook_info.pending_update_count}")
+                    
+            finally:
+                loop.close()
                 
         except Exception as e:
-            logger.error(f"❌ Webhook health check failed: {e}")
+            logger.error(f"❌ Webhook monitor error: {e}")
+    
+    logger.info("🛑 Webhook monitor stopped")
 
 async def setup_webhook():
-    """Enhanced webhook setup with retry logic"""
+    """Enhanced webhook setup"""
     global application
     
     # Construct webhook URL
     webhook_url = os.getenv('WEBHOOK_URL')
     if not webhook_url:
-        # Try to get from Render environment
         app_name = os.getenv('RENDER_SERVICE_NAME')
         external_url = os.getenv('RENDER_EXTERNAL_URL')
         
@@ -82,40 +93,37 @@ async def setup_webhook():
     
     logger.info(f"🔗 Setting webhook to: {webhook_url}")
     
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            # Clear existing webhook first
-            await application.bot.delete_webhook(drop_pending_updates=True)
-            logger.info("🧹 Cleared existing webhook and pending updates")
+    try:
+        # Clear existing webhook
+        await application.bot.delete_webhook(drop_pending_updates=True)
+        logger.info("🧹 Cleared existing webhook")
+        
+        # Wait before setting new webhook
+        await asyncio.sleep(2)
+        
+        # Set new webhook
+        success = await application.bot.set_webhook(
+            url=webhook_url,
+            allowed_updates=['message', 'callback_query'],
+            drop_pending_updates=True,
+            max_connections=5  # Reduce to prevent overload
+        )
+        
+        if success:
+            webhook_info = await application.bot.get_webhook_info()
+            if webhook_info.url == webhook_url:
+                logger.info("✅ Webhook verified successfully")
+                return True
+            else:
+                logger.error(f"❌ Webhook verification failed")
+                return False
+        else:
+            logger.error("❌ Failed to set webhook")
+            return False
             
-            # Wait a moment
-            await asyncio.sleep(2)
-            
-            # Set new webhook
-            success = await application.bot.set_webhook(
-                url=webhook_url,
-                allowed_updates=['message', 'callback_query'],
-                drop_pending_updates=True,
-                max_connections=10  # Reduce load
-            )
-            
-            if success:
-                # Verify webhook was set
-                webhook_info = await application.bot.get_webhook_info()
-                if webhook_info.url == webhook_url:
-                    logger.info("✅ Webhook verified successfully")
-                    return True
-                else:
-                    logger.error(f"❌ Webhook verification failed: expected {webhook_url}, got {webhook_info.url}")
-            
-        except Exception as e:
-            logger.error(f"❌ Webhook setup attempt {attempt + 1} failed: {e}")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(5)  # Wait before retry
-    
-    logger.error("❌ All webhook setup attempts failed")
-    return False
+    except Exception as e:
+        logger.error(f"❌ Webhook setup failed: {e}")
+        return False
 
 # Initialize clients and handlers
 delta_client = DeltaClient()
@@ -125,7 +133,7 @@ options_handler = OptionsHandler(delta_client)
 position_handler = PositionHandler(delta_client)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Enhanced error handler"""
+    """Handle errors"""
     logger.error(f"Update {update} caused error {context.error}", exc_info=context.error)
     
     try:
@@ -163,22 +171,22 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Get webhook info
         webhook_info = await application.bot.get_webhook_info()
-        webhook_status = f"✅ Set to: {webhook_info.url[:50]}..." if webhook_info.url else "❌ Not set"
+        webhook_status = f"✅ Active" if webhook_info.url else "❌ Not set"
         
         # Get BTC price
         btc_price = delta_client.get_btc_spot_price()
         price_status = f"✅ ${btc_price:,.2f}" if btc_price else "❌ Failed to fetch"
         
         debug_message = f"""
-<b>🔧 System Debug Info</b>
+<b>🔧 System Status</b>
 
 <b>Delta API:</b> {api_status}
 <b>BTC Price:</b> {price_status}
 <b>Webhook:</b> {webhook_status}
 <b>Pending Updates:</b> {webhook_info.pending_update_count}
 
-<b>Last Error:</b> {webhook_info.last_error_message or 'None'}
-        """
+<i>Last Error: {webhook_info.last_error_message or 'None'}</i>
+        """.strip()
         
         await update.message.reply_text(debug_message, parse_mode=ParseMode.HTML)
         
@@ -187,11 +195,10 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Debug command failed.")
 
 async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Enhanced positions command with better error handling"""
+    """Handle positions command"""
     try:
         logger.info(f"Positions command from user: {update.effective_user.id}")
         
-        # Show loading message
         loading_msg = await update.message.reply_text("🔄 Fetching positions...")
         
         positions = delta_client.get_positions()
@@ -216,7 +223,7 @@ async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Failed to fetch positions. Use /debug for more info.")
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle all callback queries"""
+    """Handle callback queries"""
     try:
         logger.info(f"Callback query: {update.callback_query.data}")
         query = update.callback_query
@@ -261,14 +268,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
 class WebhookHandler(tornado.web.RequestHandler):
-    """Enhanced webhook handler with better error tracking"""
+    """Handle incoming webhook updates"""
     async def post(self):
         try:
             body = self.request.body.decode('utf-8')
-            logger.info(f"📨 Webhook received: {len(body)} bytes from {self.request.remote_ip}")
+            logger.info(f"📨 Webhook: {len(body)} bytes from {self.request.remote_ip}")
             
             if not body:
-                logger.warning("Empty webhook body")
                 self.set_status(400)
                 self.write("Bad Request")
                 return
@@ -280,38 +286,29 @@ class WebhookHandler(tornado.web.RequestHandler):
             try:
                 await asyncio.wait_for(
                     application.process_update(update),
-                    timeout=25.0  # Telegram expects response within 30s
+                    timeout=25.0
                 )
-                logger.info("✅ Update processed successfully")
+                logger.info("✅ Update processed")
             except asyncio.TimeoutError:
-                logger.error("❌ Update processing timeout")
-                self.set_status(200)  # Still return 200 to prevent retries
-                self.write("Timeout")
-                return
+                logger.error("❌ Update timeout")
             
             self.set_status(200)
             self.write("OK")
             
         except Exception as e:
-            logger.error(f"❌ Webhook error: {e}", exc_info=True)
-            self.set_status(200)  # Return 200 to prevent Telegram retries
+            logger.error(f"❌ Webhook error: {e}")
+            self.set_status(200)  # Return 200 to prevent retries
             self.write("Error")
 
 class HealthHandler(tornado.web.RequestHandler):
-    """Enhanced health check"""
-    async def get(self):
+    """Health check endpoint"""
+    def get(self):
         try:
-            # Quick health checks
             health_data = {
                 "status": "healthy",
                 "service": "btc-options-bot",
-                "webhook_configured": bool(TELEGRAM_BOT_TOKEN)
+                "version": "2.0"
             }
-            
-            # Test Delta API if requested
-            if self.get_argument('test_api', 'false').lower() == 'true':
-                api_test = delta_client.test_connection()
-                health_data['delta_api'] = api_test.get('success', False)
             
             self.set_status(200)
             self.set_header("Content-Type", "application/json")
@@ -320,79 +317,117 @@ class HealthHandler(tornado.web.RequestHandler):
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             self.set_status(503)
-            self.write({"status": "unhealthy", "error": str(e)})
+            self.write({"status": "unhealthy"})
+
+class RootHandler(tornado.web.RequestHandler):
+    """Root handler"""
+    def get(self):
+        self.set_status(200)
+        self.write({
+            "service": "BTC Options Trading Bot",
+            "status": "running",
+            "version": "2.0"
+        })
 
 def make_app():
+    """Create Tornado application"""
     return tornado.web.Application([
-        (r"/", tornado.web.RequestHandler),
+        (r"/", RootHandler),
         (rf"/{TELEGRAM_BOT_TOKEN}", WebhookHandler),
         (r"/health", HealthHandler),
     ])
 
-async def graceful_shutdown(sig, loop):
-    """Handle graceful shutdown"""
-    logger.info(f"🛑 Received signal {sig}, shutting down gracefully...")
+async def initialize_bot():
+    """Initialize the bot application"""
+    global application
     
-    # Cancel webhook health check
-    for task in asyncio.all_tasks(loop):
-        if 'webhook_check' in str(task):
-            task.cancel()
-    
-    # Stop application
-    if application:
-        await application.stop()
-        await application.shutdown()
-    
-    # Stop tornado
-    tornado.ioloop.IOLoop.current().stop()
+    try:
+        logger.info("🚀 Initializing bot application...")
+        
+        # Create application
+        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+        
+        # Add handlers
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("debug", debug_command))
+        application.add_handler(CommandHandler("positions", positions_command))
+        application.add_handler(CallbackQueryHandler(callback_handler))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+        application.add_error_handler(error_handler)
+        
+        # Initialize application
+        await application.initialize()
+        logger.info("✅ Bot application initialized")
+        
+        # Setup webhook
+        webhook_success = await setup_webhook()
+        if webhook_success:
+            logger.info("✅ Webhook configured successfully")
+        else:
+            logger.warning("⚠️ Webhook setup failed, but continuing...")
+        
+        # Test bot
+        me = await application.bot.get_me()
+        logger.info(f"✅ Bot ready: @{me.username} ({me.first_name})")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Bot initialization failed: {e}")
+        return False
 
 def main():
-    """Enhanced main function"""
-    global application
+    """Main function - simplified event loop handling"""
+    global webhook_monitor_active
     
     logger.info("🤖 Starting BTC Options Trading Bot v2.0")
     
-    # Initialize application
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    
-    # Add handlers
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("debug", debug_command))
-    application.add_handler(CommandHandler("positions", positions_command))
-    application.add_handler(CallbackQueryHandler(callback_handler))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-    application.add_error_handler(error_handler)
-    
-    # Setup signal handlers
-    loop = asyncio.get_event_loop()
-    for sig in [signal.SIGTERM, signal.SIGINT]:
-        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(graceful_shutdown(s, loop)))
-    
-    # Create Tornado app
-    app = make_app()
-    http_server = tornado.httpserver.HTTPServer(app)
-    http_server.listen(PORT, HOST)
-    
     try:
-        # Initialize services
-        loop.run_until_complete(application.initialize())
-        loop.run_until_complete(setup_webhook())
+        # Initialize bot with new event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         
-        # Start periodic webhook health check
-        asyncio.create_task(periodic_webhook_check())
+        # Initialize bot application
+        initialization_success = loop.run_until_complete(initialize_bot())
         
-        logger.info("✅ Bot ready! Use /debug to check system status.")
+        if not initialization_success:
+            logger.error("❌ Failed to initialize bot")
+            return
         
-        # Start event loop
+        # Start webhook health monitor in background thread
+        monitor_thread = threading.Thread(target=webhook_health_monitor, daemon=True)
+        monitor_thread.start()
+        logger.info("✅ Webhook monitor started")
+        
+        # Create and start Tornado server
+        app = make_app()
+        http_server = tornado.httpserver.HTTPServer(app)
+        http_server.listen(PORT, HOST)
+        
+        logger.info(f"🌐 Server listening on {HOST}:{PORT}")
+        logger.info("✅ Bot ready! Send /start to test.")
+        
+        # Start Tornado event loop
         tornado.ioloop.IOLoop.current().start()
         
+    except KeyboardInterrupt:
+        logger.info("🛑 Received shutdown signal")
     except Exception as e:
         logger.error(f"❌ Fatal error: {e}")
     finally:
+        # Cleanup
+        webhook_monitor_active = False
+        
         if application:
-            loop.run_until_complete(application.stop())
-            loop.run_until_complete(application.shutdown())
+            try:
+                # Use the current event loop for cleanup
+                current_loop = asyncio.get_event_loop()
+                if not current_loop.is_closed():
+                    current_loop.run_until_complete(application.stop())
+                    current_loop.run_until_complete(application.shutdown())
+                    logger.info("✅ Bot application stopped")
+            except Exception as e:
+                logger.error(f"❌ Cleanup error: {e}")
 
 if __name__ == '__main__':
     main()
-            
