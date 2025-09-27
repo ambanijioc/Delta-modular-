@@ -195,32 +195,80 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Debug command failed.")
 
 async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle positions command"""
+    """Enhanced positions command with multiple data sources"""
     try:
         logger.info(f"Positions command from user: {update.effective_user.id}")
         
-        loading_msg = await update.message.reply_text("🔄 Fetching positions...")
+        loading_msg = await update.message.reply_text("🔄 Fetching positions and portfolio data...")
         
+        # Try to get positions
         positions = delta_client.get_positions()
+        
+        # Also try to get portfolio summary for additional context
+        portfolio = delta_client.get_portfolio_summary()
         
         if not positions.get('success'):
             error_msg = positions.get('error', 'Unknown error')
-            await loading_msg.edit_text(f"❌ {error_msg}")
+            
+            # Provide helpful error messages
+            if 'bad_schema' in str(error_msg):
+                error_text = "❌ API schema error. This might be due to:\n\n"
+                error_text += "• Missing required permissions (enable 'Read Data' on your API key)\n"
+                error_text += "• API key configuration issues\n"
+                error_text += "• Try refreshing your API credentials\n\n"
+                error_text += f"Technical details: {error_msg}"
+            else:
+                error_text = f"❌ {error_msg}"
+            
+            await loading_msg.edit_text(error_text)
             return
         
         positions_data = positions.get('result', [])
         
+        # Build response message
         if not positions_data:
-            await loading_msg.edit_text("📊 No open positions found.")
+            message = "📊 <b>No Open Positions Found</b>\n\n"
+            
+            # Try to show portfolio info if available
+            if portfolio.get('success'):
+                balances = portfolio.get('result', [])
+                if balances:
+                    message += "<b>💰 Wallet Balances:</b>\n"
+                    for balance in balances[:5]:  # Show first 5 balances
+                        asset = balance.get('asset_symbol', 'Unknown')
+                        available = balance.get('available_balance', 0)
+                        if float(available) > 0:
+                            message += f"• {asset}: {available}\n"
+                    message += "\n"
+            
+            message += "<i>Start trading by selecting an expiry date!</i>"
+            
+            await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
             return
         
+        # Format positions message
         from utils.helpers import format_positions_message
         message = format_positions_message(positions_data)
+        
+        # Add portfolio summary if available
+        if portfolio.get('success'):
+            balances = portfolio.get('result', [])
+            total_balance = sum(float(b.get('available_balance', 0)) for b in balances)
+            if total_balance > 0:
+                message += f"\n<b>💰 Total Portfolio Value:</b> ₹{total_balance:,.2f}"
+        
         await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
         
     except Exception as e:
         logger.error(f"Error in positions_command: {e}", exc_info=True)
-        await update.message.reply_text("❌ Failed to fetch positions. Use /debug for more info.")
+        await update.message.reply_text(
+            "❌ Failed to fetch positions. Possible issues:\n\n"
+            "• API credentials need 'Read Data' permission\n"
+            "• Network connectivity issues\n"
+            "• Rate limiting\n\n"
+            "Use /debug for more information."
+        )
+
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle callback queries"""
