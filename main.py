@@ -315,6 +315,57 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show portfolio summary"""
+    try:
+        logger.info(f"Portfolio command from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Fetching portfolio data...")
+        
+        portfolio = delta_client.get_portfolio_summary()
+        
+        if not portfolio.get('success'):
+            error_msg = portfolio.get('error', 'Unknown error')
+            await loading_msg.edit_text(f"❌ Failed to fetch portfolio: {error_msg}")
+            return
+        
+        balances = portfolio.get('result', [])
+        
+        if not balances:
+            await loading_msg.edit_text("📊 No balance data available.")
+            return
+        
+        message = "<b>💰 Portfolio Summary</b>\n\n"
+        
+        total_value = 0
+        for balance in balances:
+            asset = balance.get('asset_symbol', 'Unknown')
+            available = float(balance.get('available_balance', 0))
+            reserved = float(balance.get('order_margin', 0))
+            
+            if available > 0 or reserved > 0:
+                message += f"<b>{asset}:</b>\n"
+                message += f"  Available: {available:,.4f}\n"
+                if reserved > 0:
+                    message += f"  Reserved: {reserved:,.4f}\n"
+                message += "\n"
+                
+                # Add to total if it's INR
+                if asset == 'INR':
+                    total_value += available + reserved
+        
+        if total_value > 0:
+            message += f"<b>Total INR Value:</b> ₹{total_value:,.2f}"
+        
+        await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in portfolio_command: {e}", exc_info=True)
+        await update.message.reply_text("❌ Failed to fetch portfolio data.")
+
+# Add the portfolio handler to main
+application.add_handler(CommandHandler("portfolio", portfolio_command))
+
 class WebhookHandler(tornado.web.RequestHandler):
     """Handle incoming webhook updates"""
     async def post(self):
