@@ -2,8 +2,10 @@ services:
   - type: web
     name: btc-options-bot
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
+    healthCheckPath: /health
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
@@ -11,3 +13,12 @@ services:
         sync: false
       - key: DELTA_API_SECRET
         sync: false
+      - key: WEBHOOK_URL
+        value: https://btc-options-bot.onrender.com
+      - key: RENDER_SERVICE_NAME
+        value: btc-options-bot
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000
+        
