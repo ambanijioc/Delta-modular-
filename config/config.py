@@ -21,24 +21,24 @@ WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 RENDER_SERVICE_NAME = os.getenv('RENDER_SERVICE_NAME')
 
 # Trading Configuration
-BTC_PRODUCT_ID = int(os.getenv('BTC_PRODUCT_ID', 27))  # BTC perpetual futures product ID
+BTC_PRODUCT_ID = int(os.getenv('BTC_PRODUCT_ID', 27))
 
-# Logging Configuration
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
-
-# Validation
+# Basic validation without raising errors
 def validate_config():
-    """Validate required configuration"""
-    required_vars = {
-        'TELEGRAM_BOT_TOKEN': TELEGRAM_BOT_TOKEN,
-        'DELTA_API_KEY': DELTA_API_KEY,
-        'DELTA_API_SECRET': DELTA_API_SECRET,
-    }
+    """Basic config validation"""
+    missing = []
+    if not TELEGRAM_BOT_TOKEN:
+        missing.append('TELEGRAM_BOT_TOKEN')
+    if not DELTA_API_KEY:
+        missing.append('DELTA_API_KEY')
+    if not DELTA_API_SECRET:
+        missing.append('DELTA_API_SECRET')
     
-    missing_vars = [var for var, value in required_vars.items() if not value]
-    
-    if missing_vars:
-        raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+    if missing:
+        print(f"⚠️ Missing environment variables: {', '.join(missing)}")
+        return False
     
     return True
-  
+
+# Run validation on import
+validate_config()
