@@ -1,10 +1,13 @@
-import hashlib
-import hmac
-import time
-import json
+import hashlib  # Built-in module
+import hmac     # Built-in module
+import time     # Built-in module
+import json     # Built-in module
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta  # Built-in module
 from config import DELTA_API_KEY, DELTA_API_SECRET, DELTA_BASE_URL, BTC_SPOT_SYMBOL
+
+# Rest of the code remains the same...
+
 
 class DeltaExchangeClient:
     def __init__(self):
