@@ -1,52 +1,95 @@
 import asyncio
-import logging
-from aiohttp import web
-from telegram_bot import TelegramOptionsBot
-from config import HOST, PORT
+from telegram import Update
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.constants import ParseMode
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from config.config import TELEGRAM_BOT_TOKEN, HOST, PORT
+from api.delta_client import DeltaClient
+from api.telegram_client import TelegramClient
+from handlers.expiry_handler import ExpiryHandler
+from handlers.options_handler import OptionsHandler
+from handlers.position_handler import PositionHandler
+from utils.constants import START_MESSAGE, HELP_MESSAGE
 
-async def health_check(request):
-    """Health check endpoint for Render.com"""
-    return web.Response(text="BTC Options Bot is running!", status=200)
+# Initialize clients and handlers
+delta_client = DeltaClient()
+telegram_client = TelegramClient(TELEGRAM_BOT_TOKEN)
+expiry_handler = ExpiryHandler(delta_client)
+options_handler = OptionsHandler(delta_client)
+position_handler = PositionHandler(delta_client)
 
-async def main():
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start command"""
+    reply_markup = telegram_client.create_main_menu_keyboard()
+    await update.message.reply_text(
+        START_MESSAGE,
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup
+    )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /help command"""
+    await update.message.reply_text(
+        HELP_MESSAGE,
+        parse_mode=ParseMode.HTML
+    )
+
+async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /positions command"""
+    positions = delta_client.get_positions()
+    
+    if not positions.get('success'):
+        await update.message.reply_text("❌ Unable to fetch positions. Please try again.")
+        return
+    
+    positions_data = positions.get('result', [])
+    
+    if not positions_data:
+        await update.message.reply_text("📊 No open positions found.")
+        return
+    
+    from utils.helpers import format_positions_message
+    message = format_positions_message(positions_data)
+    await update.message.reply_text(message, parse_mode=ParseMode.HTML)
+
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle all callback queries"""
+    query = update.callback_query
+    data = query.data
+    
+    if data == "select_expiry":
+        await expiry_handler.show_expiry_selection(update, context)
+    elif data.startswith("expiry_"):
+        await expiry_handler.handle_expiry_selection(update, context)
+    elif data.startswith("strategy_"):
+        await options_handler.handle_strategy_selection(update, context)
+    elif data == "show_positions":
+        await position_handler.show_positions(update, context)
+
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text messages"""
+    if context.user_data.get('waiting_for_lot_size'):
+        await options_handler.handle_lot_size_input(update, context)
+
+def main():
     """Main function to run the bot"""
-    try:
-        # Initialize bot
-        bot = TelegramOptionsBot()
-        
-        # Create web server for Render.com health checks
-        app = web.Application()
-        app.router.add_get('/', health_check)
-        app.router.add_get('/health', health_check)
-        
-        # Start web server
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, HOST, PORT)
-        
-        logger.info(f"Starting web server on {HOST}:{PORT}")
-        await site.start()
-        
-        # Start Telegram bot
-        logger.info("Starting Telegram bot...")
-        await bot.run_polling()
-        
-    except Exception as e:
-        logger.error(f"Application error: {e}")
-        raise
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    # Add handlers
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("positions", positions_command))
+    application.add_handler(CallbackQueryHandler(callback_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    
+    # Set up webhook for Render.com deployment
+    print(f"Starting bot on {HOST}:{PORT}")
+    application.run_webhook(
+        listen=HOST,
+        port=PORT,
+        webhook_url=f"https://your-app-name.onrender.com/{TELEGRAM_BOT_TOKEN}"
+    )
 
 if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-    except Exception as e:
-        logger.error(f"Bot crashed: {e}")
-        
+    main()
+    
