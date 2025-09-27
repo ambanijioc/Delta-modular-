@@ -106,7 +106,7 @@ async def setup_webhook():
             url=webhook_url,
             allowed_updates=['message', 'callback_query'],
             drop_pending_updates=True,
-            max_connections=5  # Reduce to prevent overload
+            max_connections=5
         )
         
         if success:
@@ -269,52 +269,6 @@ async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Use /debug for more information."
         )
 
-
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle callback queries"""
-    try:
-        logger.info(f"Callback query: {update.callback_query.data}")
-        query = update.callback_query
-        data = query.data
-        
-        if data == "select_expiry":
-            await expiry_handler.show_expiry_selection(update, context)
-        elif data.startswith("expiry_"):
-            await expiry_handler.handle_expiry_selection(update, context)
-        elif data.startswith("strategy_"):
-            await options_handler.handle_strategy_selection(update, context)
-        elif data == "show_positions":
-            await position_handler.show_positions(update, context)
-        else:
-            await query.answer("Unknown option")
-            
-    except Exception as e:
-        logger.error(f"Error in callback_handler: {e}", exc_info=True)
-        try:
-            await update.callback_query.answer("❌ An error occurred")
-        except:
-            pass
-
-async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text messages"""
-    try:
-        logger.info(f"Text message from user {update.effective_user.id}: {update.message.text}")
-        
-        if context.user_data.get('waiting_for_lot_size'):
-            await options_handler.handle_lot_size_input(update, context)
-        else:
-            await update.message.reply_text(
-                "👋 Hi! Use /start to begin trading, /debug for system status, or /positions to view positions.",
-                reply_markup=telegram_client.create_main_menu_keyboard()
-            )
-            
-    except Exception as e:
-        logger.error(f"Error in message_handler: {e}", exc_info=True)
-        try:
-            await update.message.reply_text("❌ An error occurred. Please try /start")
-        except:
-            pass
-
 async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show portfolio summary"""
     try:
@@ -363,8 +317,54 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in portfolio_command: {e}", exc_info=True)
         await update.message.reply_text("❌ Failed to fetch portfolio data.")
 
-# Add the portfolio handler to main
-application.add_handler(CommandHandler("portfolio", portfolio_command))
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle callback queries"""
+    try:
+        logger.info(f"Callback query: {update.callback_query.data}")
+        query = update.callback_query
+        data = query.data
+        
+        if data == "select_expiry":
+            await expiry_handler.show_expiry_selection(update, context)
+        elif data.startswith("expiry_"):
+            await expiry_handler.handle_expiry_selection(update, context)
+        elif data.startswith("strategy_"):
+            await options_handler.handle_strategy_selection(update, context)
+        elif data == "show_positions":
+            await position_handler.show_positions(update, context)
+        else:
+            await query.answer("Unknown option")
+            
+    except Exception as e:
+        logger.error(f"Error in callback_handler: {e}", exc_info=True)
+        try:
+            await update.callback_query.answer("❌ An error occurred")
+        except:
+            pass
+
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text messages"""
+    try:
+        logger.info(f"Text message from user {update.effective_user.id}: {update.message.text}")
+        
+        if context.user_data.get('waiting_for_lot_size'):
+            await options_handler.handle_lot_size_input(update, context)
+        else:
+            await update.message.reply_text(
+                "👋 Hi! Available commands:\n"
+                "/start - Main menu\n"
+                "/debug - System status\n"
+                "/positions - View positions\n"
+                "/portfolio - Portfolio summary",
+                reply_markup=telegram_client.create_main_menu_keyboard()
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in message_handler: {e}", exc_info=True)
+        try:
+            await update.message.reply_text("❌ An error occurred. Please try /start")
+        except:
+            pass
 
 class WebhookHandler(tornado.web.RequestHandler):
     """Handle incoming webhook updates"""
@@ -396,7 +396,7 @@ class WebhookHandler(tornado.web.RequestHandler):
             
         except Exception as e:
             logger.error(f"❌ Webhook error: {e}")
-            self.set_status(200)  # Return 200 to prevent retries
+            self.set_status(200)
             self.write("Error")
 
 class HealthHandler(tornado.web.RequestHandler):
@@ -422,6 +422,7 @@ class RootHandler(tornado.web.RequestHandler):
     """Root handler"""
     def get(self):
         self.set_status(200)
+        self.set_header("Content-Type", "application/json")
         self.write({
             "service": "BTC Options Trading Bot",
             "status": "running",
@@ -446,13 +447,16 @@ async def initialize_bot():
         # Create application
         application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
         
-        # Add handlers
+        # Add all handlers here inside the function
         application.add_handler(CommandHandler("start", start_command))
         application.add_handler(CommandHandler("debug", debug_command))
         application.add_handler(CommandHandler("positions", positions_command))
+        application.add_handler(CommandHandler("portfolio", portfolio_command))  # Fixed: Added here
         application.add_handler(CallbackQueryHandler(callback_handler))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
         application.add_error_handler(error_handler)
+        
+        logger.info("✅ All handlers registered")
         
         # Initialize application
         await application.initialize()
@@ -504,7 +508,7 @@ def main():
         http_server.listen(PORT, HOST)
         
         logger.info(f"🌐 Server listening on {HOST}:{PORT}")
-        logger.info("✅ Bot ready! Send /start to test.")
+        logger.info("✅ Bot ready! Commands: /start, /debug, /positions, /portfolio")
         
         # Start Tornado event loop
         tornado.ioloop.IOLoop.current().start()
@@ -519,7 +523,6 @@ def main():
         
         if application:
             try:
-                # Use the current event loop for cleanup
                 current_loop = asyncio.get_event_loop()
                 if not current_loop.is_closed():
                     current_loop.run_until_complete(application.stop())
