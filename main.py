@@ -36,6 +36,7 @@ application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command"""
+    logger.info(f"Start command from user: {update.effective_user.id}")
     reply_markup = telegram_client.create_main_menu_keyboard()
     await update.message.reply_text(
         START_MESSAGE,
@@ -45,6 +46,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command"""
+    logger.info(f"Help command from user: {update.effective_user.id}")
     await update.message.reply_text(
         HELP_MESSAGE,
         parse_mode=ParseMode.HTML
@@ -52,6 +54,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /positions command"""
+    logger.info(f"Positions command from user: {update.effective_user.id}")
     positions = delta_client.get_positions()
     
     if not positions.get('success'):
@@ -70,6 +73,7 @@ async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle all callback queries"""
+    logger.info(f"Callback query: {update.callback_query.data}")
     query = update.callback_query
     data = query.data
     
@@ -84,8 +88,13 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text messages"""
+    logger.info(f"Text message from user {update.effective_user.id}: {update.message.text}")
+    
     if context.user_data.get('waiting_for_lot_size'):
         await options_handler.handle_lot_size_input(update, context)
+    else:
+        # Echo message for testing
+        await update.message.reply_text(f"Echo: {update.message.text}")
 
 # Add handlers to application
 application.add_handler(CommandHandler("start", start_command))
@@ -103,6 +112,7 @@ class RootHandler(tornado.web.RequestHandler):
             "status": "active",
             "service": "BTC Options Trading Bot",
             "version": "1.0.0",
+            "bot_username": "@your_bot_username",
             "endpoints": {
                 "webhook": f"/{TELEGRAM_BOT_TOKEN}",
                 "health": "/health",
@@ -115,78 +125,59 @@ class WebhookHandler(tornado.web.RequestHandler):
     async def post(self):
         try:
             body = self.request.body.decode('utf-8')
-            logger.info(f"Received webhook: {len(body)} bytes")
+            logger.info(f"📨 Received webhook: {len(body)} bytes from {self.request.remote_ip}")
+            
+            if not body:
+                logger.warning("Empty webhook body received")
+                self.set_status(400)
+                self.write("Bad Request: Empty body")
+                return
             
             update_data = json.loads(body)
+            logger.info(f"📊 Update data: {json.dumps(update_data, indent=2)}")
+            
             update = Update.de_json(update_data, application.bot)
             
             if not hasattr(WebhookHandler, '_initialized'):
                 await application.initialize()
                 WebhookHandler._initialized = True
+                logger.info("✅ Application initialized")
             
+            # Process the update
             await application.process_update(update)
+            logger.info("✅ Update processed successfully")
             
             self.set_status(200)
             self.write("OK")
             
         except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in webhook: {e}")
+            logger.error(f"❌ Invalid JSON in webhook: {e}")
             self.set_status(400)
             self.write("Bad Request: Invalid JSON")
         except Exception as e:
-            logger.error(f"Error processing update: {e}")
+            logger.error(f"❌ Error processing update: {e}", exc_info=True)
             self.set_status(500)
             self.write("Internal Server Error")
 
 class HealthHandler(tornado.web.RequestHandler):
-    """Health check endpoint for Render.com"""
+    """Health check endpoint"""
     def get(self):
         try:
-            # Basic health checks
             health_status = {
                 "status": "healthy",
-                "timestamp": str(asyncio.get_event_loop().time()),
                 "service": "btc-options-bot",
-                "version": "1.0.0"
+                "version": "1.0.0",
+                "webhook_configured": bool(TELEGRAM_BOT_TOKEN)
             }
             
-            # Check if bot token is configured
-            if not TELEGRAM_BOT_TOKEN:
-                health_status["status"] = "unhealthy"
-                health_status["error"] = "Missing Telegram bot token"
-            
-            # Check Delta API credentials
-            from config.config import DELTA_API_KEY, DELTA_API_SECRET
-            if not DELTA_API_KEY or not DELTA_API_SECRET:
-                health_status["status"] = "unhealthy"
-                health_status["error"] = "Missing Delta API credentials"
-            
-            status_code = 200 if health_status["status"] == "healthy" else 503
-            self.set_status(status_code)
+            self.set_status(200)
             self.set_header("Content-Type", "application/json")
             self.write(health_status)
             
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             self.set_status(503)
-            self.write({
-                "status": "unhealthy",
-                "error": str(e)
-            })
-
-class StatusHandler(tornado.web.RequestHandler):
-    """Service status endpoint"""
-    def get(self):
-        self.set_status(200)
-        self.set_header("Content-Type", "application/json")
-        self.write({
-            "service": "BTC Options Trading Bot",
-            "status": "running",
-            "host": HOST,
-            "port": PORT,
-            "webhook_path": f"/{TELEGRAM_BOT_TOKEN}",
-            "endpoints": ["/", "/health", "/status", f"/{TELEGRAM_BOT_TOKEN}"]
-        })
+            self.write({"status": "unhealthy", "error": str(e)})
 
 def make_app():
     """Create Tornado application with all routes"""
@@ -194,29 +185,50 @@ def make_app():
         (r"/", RootHandler),
         (rf"/{TELEGRAM_BOT_TOKEN}", WebhookHandler),
         (r"/health", HealthHandler),
-        (r"/status", StatusHandler),
     ], debug=False)
 
 async def setup_webhook():
-    """Set up webhook for Telegram bot"""
+    """Set up webhook with proper allowed_updates"""
     # Get webhook URL from environment or construct it
     webhook_url = os.getenv('WEBHOOK_URL')
     if not webhook_url:
-        # For Render.com, construct from app name
         app_name = os.getenv('RENDER_SERVICE_NAME', 'your-app-name')
         webhook_url = f"https://{app_name}.onrender.com/{TELEGRAM_BOT_TOKEN}"
     
+    logger.info(f"🔗 Setting webhook to: {webhook_url}")
+    
     try:
-        await application.bot.set_webhook(webhook_url)
-        logger.info(f"✅ Webhook set successfully: {webhook_url}")
-        return True
+        # Clear existing webhook first
+        await application.bot.delete_webhook()
+        logger.info("🧹 Cleared existing webhook")
+        
+        # Set new webhook with allowed_updates
+        success = await application.bot.set_webhook(
+            url=webhook_url,
+            allowed_updates=['message', 'callback_query']  # Key fix!
+        )
+        
+        if success:
+            logger.info("✅ Webhook set successfully")
+            
+            # Verify webhook setup
+            webhook_info = await application.bot.get_webhook_info()
+            logger.info(f"📊 Webhook info: URL={webhook_info.url}, Pending={webhook_info.pending_update_count}")
+            
+            return True
+        else:
+            logger.error("❌ Failed to set webhook")
+            return False
+            
     except Exception as e:
-        logger.error(f"❌ Failed to set webhook: {e}")
+        logger.error(f"❌ Webhook setup failed: {e}")
         return False
 
 async def initialize_services():
     """Initialize all services"""
     try:
+        logger.info("🚀 Initializing services...")
+        
         # Initialize Telegram bot
         await application.initialize()
         logger.info("✅ Telegram bot initialized")
@@ -224,16 +236,14 @@ async def initialize_services():
         # Set webhook
         webhook_success = await setup_webhook()
         if not webhook_success:
-            logger.warning("⚠️ Webhook setup failed, but service will continue")
+            logger.warning("⚠️ Webhook setup failed")
+            return False
         
-        # Test Delta API connection
-        spot_price = delta_client.get_btc_spot_price()
-        if spot_price:
-            logger.info(f"✅ Delta API connected - BTC Price: ${spot_price}")
-        else:
-            logger.warning("⚠️ Delta API connection test failed")
+        # Test bot
+        me = await application.bot.get_me()
+        logger.info(f"✅ Bot info: @{me.username} ({me.first_name})")
         
-        logger.info("🚀 All services initialized successfully")
+        logger.info("🎉 All services initialized successfully")
         return True
         
     except Exception as e:
@@ -242,8 +252,7 @@ async def initialize_services():
 
 def main():
     """Main function to run the bot"""
-    logger.info(f"🤖 Starting BTC Options Trading Bot")
-    logger.info(f"📡 Server: {HOST}:{PORT}")
+    logger.info("🤖 Starting BTC Options Trading Bot")
     
     # Create Tornado app
     app = make_app()
@@ -252,38 +261,31 @@ def main():
     http_server = tornado.httpserver.HTTPServer(app)
     http_server.listen(PORT, HOST)
     
-    logger.info(f"🌐 Webhook server started on {HOST}:{PORT}")
-    logger.info(f"📊 Available endpoints:")
-    logger.info(f"  • Root: http://{HOST}:{PORT}/")
-    logger.info(f"  • Health: http://{HOST}:{PORT}/health")
-    logger.info(f"  • Status: http://{HOST}:{PORT}/status")
-    logger.info(f"  • Webhook: http://{HOST}:{PORT}/{TELEGRAM_BOT_TOKEN}")
+    logger.info(f"🌐 Server listening on {HOST}:{PORT}")
     
-    # Initialize services and start event loop
+    # Initialize services
     loop = asyncio.get_event_loop()
     
     try:
-        # Initialize all services
         initialization_success = loop.run_until_complete(initialize_services())
         
         if not initialization_success:
             logger.error("❌ Failed to initialize services")
             return
         
-        logger.info("✅ Bot is ready to receive updates!")
+        logger.info("✅ Bot ready! Send /start to test.")
         
-        # Start the tornado event loop
+        # Start event loop
         tornado.ioloop.IOLoop.current().start()
         
     except KeyboardInterrupt:
-        logger.info("🛑 Bot stopped by user")
+        logger.info("🛑 Bot stopped")
     except Exception as e:
         logger.error(f"❌ Fatal error: {e}")
     finally:
-        logger.info("🔄 Cleaning up...")
         loop.run_until_complete(application.stop())
         loop.run_until_complete(application.shutdown())
 
 if __name__ == '__main__':
     main()
-    
+        
