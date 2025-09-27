@@ -366,6 +366,73 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+# ============= TORNADO HANDLERS =============
+
+class RootHandler(tornado.web.RequestHandler):
+    """Enhanced root handler for UptimeRobot"""
+    def get(self):
+        try:
+            # Log the request details
+            user_agent = self.request.headers.get('User-Agent', 'Unknown')
+            remote_ip = self.request.remote_ip
+            logger.info(f"Root request from {remote_ip} - User-Agent: {user_agent}")
+            
+            # Set proper headers for monitoring services
+            self.set_status(200)
+            self.set_header("Content-Type", "text/html; charset=utf-8")
+            
+            # Return a simple HTML response that UptimeRobot expects
+            html_response = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>BTC Options Trading Bot</title>
+                <meta charset="utf-8">
+            </head>
+            <body>
+                <h1>✅ BTC Options Trading Bot</h1>
+                <p><strong>Status:</strong> Running</p>
+                <p><strong>Version:</strong> 2.0</p>
+                <p><strong>Service:</strong> Telegram Bot for Delta Exchange Options Trading</p>
+                <p><strong>Uptime:</strong> Service is healthy and responding</p>
+                <hr>
+                <p><small>This endpoint is monitored for service availability.</small></p>
+            </body>
+            </html>
+            """
+            
+            self.write(html_response)
+            
+        except Exception as e:
+            logger.error(f"Root handler error: {e}")
+            self.set_status(500)
+            self.write("<h1>Service Error</h1>")
+
+class UptimeHandler(tornado.web.RequestHandler):
+    """Dedicated handler for uptime monitoring"""
+    def get(self):
+        try:
+            # Log monitoring request
+            logger.info(f"Uptime check from {self.request.remote_ip}")
+            
+            # Simple response that uptime monitors love
+            self.set_status(200)
+            self.set_header("Content-Type", "text/plain")
+            self.write("OK - Service is running")
+        except Exception as e:
+            logger.error(f"Uptime handler error: {e}")
+            self.set_status(500)
+            self.write("ERROR")
+
+    def head(self):
+        """Handle HEAD requests that UptimeRobot might send"""
+        try:
+            self.set_status(200)
+            self.set_header("Content-Type", "text/plain")
+        except Exception as e:
+            logger.error(f"Uptime HEAD handler error: {e}")
+            self.set_status(500)
+
 class WebhookHandler(tornado.web.RequestHandler):
     """Handle incoming webhook updates"""
     async def post(self):
@@ -400,34 +467,64 @@ class WebhookHandler(tornado.web.RequestHandler):
             self.write("Error")
 
 class HealthHandler(tornado.web.RequestHandler):
-    """Health check endpoint"""
+    """Enhanced health check endpoint"""
     def get(self):
         try:
-            health_data = {
+            # Perform actual health checks
+            health_status = {
                 "status": "healthy",
                 "service": "btc-options-bot",
-                "version": "2.0"
+                "version": "2.0",
+                "timestamp": int(time.time())
             }
             
-            self.set_status(200)
+            # Test bot connectivity
+            try:
+                if application and application.bot:
+                    health_status["bot_status"] = "connected"
+                else:
+                    health_status["bot_status"] = "disconnected"
+                    health_status["status"] = "degraded"
+            except:
+                health_status["bot_status"] = "error"
+                health_status["status"] = "degraded"
+            
+            # Test Delta API (quick check)
+            try:
+                api_test = delta_client.test_connection()
+                health_status["delta_api"] = "connected" if api_test.get('success') else "disconnected"
+            except:
+                health_status["delta_api"] = "error"
+            
+            # Return appropriate HTTP status
+            if health_status["status"] == "healthy":
+                self.set_status(200)
+            else:
+                self.set_status(503)  # Service Unavailable
+                
             self.set_header("Content-Type", "application/json")
-            self.write(health_data)
+            self.write(health_status)
             
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             self.set_status(503)
-            self.write({"status": "unhealthy"})
+            self.set_header("Content-Type", "application/json")
+            self.write({
+                "status": "unhealthy", 
+                "error": str(e),
+                "timestamp": int(time.time())
+            })
+    
+    def head(self):
+        """Handle HEAD requests"""
+        try:
+            self.set_status(200)
+            self.set_header("Content-Type", "application/json")
+        except Exception as e:
+            logger.error(f"Health HEAD handler error: {e}")
+            self.set_status(500)
 
-class RootHandler(tornado.web.RequestHandler):
-    """Root handler"""
-    def get(self):
-        self.set_status(200)
-        self.set_header("Content-Type", "application/json")
-        self.write({
-            "service": "BTC Options Trading Bot",
-            "status": "running",
-            "version": "2.0"
-        })
+# ============= APPLICATION SETUP =============
 
 def make_app():
     """Create Tornado application with uptime-friendly routes"""
@@ -454,7 +551,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("start", start_command))
         application.add_handler(CommandHandler("debug", debug_command))
         application.add_handler(CommandHandler("positions", positions_command))
-        application.add_handler(CommandHandler("portfolio", portfolio_command))  # Fixed: Added here
+        application.add_handler(CommandHandler("portfolio", portfolio_command))
         application.add_handler(CallbackQueryHandler(callback_handler))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
         application.add_error_handler(error_handler)
@@ -511,7 +608,11 @@ def main():
         http_server.listen(PORT, HOST)
         
         logger.info(f"🌐 Server listening on {HOST}:{PORT}")
-        logger.info("✅ Bot ready! Commands: /start, /debug, /positions, /portfolio")
+        logger.info("✅ Bot ready! Available endpoints:")
+        logger.info("  • / (main page)")
+        logger.info("  • /uptime (UptimeRobot endpoint)")
+        logger.info("  • /health (health check)")
+        logger.info("  • /status (status check)")
         
         # Start Tornado event loop
         tornado.ioloop.IOLoop.current().start()
@@ -521,16 +622,29 @@ def main():
     except Exception as e:
         logger.error(f"❌ Fatal error: {e}")
     finally:
-        # Cleanup
+        # Cleanup - Fixed
         webhook_monitor_active = False
         
         if application:
             try:
                 current_loop = asyncio.get_event_loop()
                 if not current_loop.is_closed():
-                    current_loop.run_until_complete(application.stop())
-                    current_loop.run_until_complete(application.shutdown())
-                    logger.info("✅ Bot application stopped")
+                    # Only stop if application is actually running
+                    try:
+                        current_loop.run_until_complete(application.stop())
+                        logger.info("✅ Application stopped")
+                    except RuntimeError as e:
+                        if "not running" in str(e):
+                            logger.info("ℹ️ Application was already stopped")
+                        else:
+                            logger.error(f"Stop error: {e}")
+                            
+                    try:
+                        current_loop.run_until_complete(application.shutdown())
+                        logger.info("✅ Application shutdown complete")
+                    except Exception as e:
+                        logger.error(f"Shutdown error: {e}")
+                        
             except Exception as e:
                 logger.error(f"❌ Cleanup error: {e}")
 
