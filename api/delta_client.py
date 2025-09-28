@@ -688,7 +688,7 @@ class DeltaClient:
                 return {"success": False, "error": error_msg}
         
         # Prepare the order payload
-             payload = {
+            payload = {
                 "product_id": int(product_id),
                 "size": int(size),
                 "side": side,
