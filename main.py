@@ -782,25 +782,23 @@ async def debug_matching_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text(f"❌ Matching debug failed: {e}")
 
 async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show active stop orders - with debug"""
+    """Show active orders - enhanced version"""
     try:
         logger.info(f"Orders command from user: {update.effective_user.id}")
         
         loading_msg = await update.message.reply_text("🔄 Fetching active orders...")
         
-        # Debug: Test the API call
-        logger.info("🔍 Testing stop orders API call...")
+        # Get stop orders
         stop_orders = delta_client.get_stop_orders()
-        logger.info(f"🔍 Stop orders response: {stop_orders}")
         
         if not stop_orders.get('success'):
             error = stop_orders.get('error', 'Unknown error')
-            logger.error(f"❌ Stop orders API failed: {error}")
+            logger.error(f"❌ Stop orders failed: {error}")
             await loading_msg.edit_text(f"❌ Failed to fetch orders: {error}")
             return
         
         orders_data = stop_orders.get('result', [])
-        logger.info(f"🔍 Found {len(orders_data)} orders")
+        logger.info(f"📊 Processing {len(orders_data)} orders")
         
         if not orders_data:
             await loading_msg.edit_text("📋 No active stop orders found.")
@@ -809,22 +807,37 @@ async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = "<b>📋 Active Stop Orders</b>\n\n"
         
         for i, order in enumerate(orders_data[:10], 1):
-            logger.info(f"🔍 Processing order {i}: {order}")
-            
-            product = order.get('product', {})
-            symbol = product.get('symbol', 'Unknown')
-            order_id = order.get('id', 'N/A')
-            side = order.get('side', 'Unknown')
-            size = order.get('size', 0)
-            stop_price = order.get('stop_price', 'N/A')
-            status = order.get('state', 'Unknown')
-            
-            message += f"<b>{i}. {symbol}</b>\n"
-            message += f"   ID: <code>{order_id}</code>\n"
-            message += f"   Side: {side.title()}\n"
-            message += f"   Size: {size} contracts\n"
-            message += f"   Stop: ${stop_price}\n"
-            message += f"   Status: {status}\n\n"
+            try:
+                # Extract order details with fallbacks
+                order_id = order.get('id', 'N/A')
+                product_symbol = order.get('product_symbol', 'Unknown')
+                side = order.get('side', 'Unknown')
+                size = order.get('size', 0)
+                stop_price = order.get('stop_price', 'N/A')
+                limit_price = order.get('limit_price', None)
+                status = order.get('state', 'Unknown')
+                order_type = order.get('order_type', 'Unknown')
+                stop_order_type = order.get('stop_order_type', 'N/A')
+                
+                logger.info(f"📋 Order {i}: ID={order_id}, Symbol={product_symbol}, Type={order_type}")
+                
+                message += f"<b>{i}. {product_symbol}</b>\n"
+                message += f"   ID: <code>{order_id}</code>\n"
+                message += f"   Type: {order_type.title()}\n"
+                message += f"   Stop Type: {stop_order_type}\n"
+                message += f"   Side: {side.title()}\n"
+                message += f"   Size: {size} contracts\n"
+                message += f"   Stop Price: ${stop_price}\n"
+                
+                if limit_price:
+                    message += f"   Limit Price: ${limit_price}\n"
+                
+                message += f"   Status: {status.title()}\n\n"
+                
+            except Exception as e:
+                logger.error(f"❌ Error processing order {i}: {e}")
+                message += f"<b>{i}. Error Processing Order</b>\n"
+                message += f"   ID: {order.get('id', 'N/A')}\n\n"
         
         await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
         
