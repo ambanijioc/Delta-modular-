@@ -142,6 +142,24 @@ class DeltaClient:
             params['contract_types'] = contract_types
         return self._make_request('GET', '/products', params)
     
+    def get_live_ticker(self, product_id: int) -> Dict:
+        """Get live ticker data for a product"""
+        try:
+            logger.info(f"🔍 Fetching live ticker for product: {product_id}")
+            response = self._make_request('GET', f'/tickers/{product_id}')
+        
+            if response.get('success'):
+                ticker_data = response.get('result', {})
+                logger.info(f"✅ Got ticker data: mark_price={ticker_data.get('mark_price')}")
+                return ticker_data
+            else:
+                logger.warning(f"⚠️ Ticker request failed: {response.get('error')}")
+                return {}
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting ticker: {e}")
+            return {}
+    
     def get_ticker(self, symbol: str) -> Dict:
         """Get ticker data for a specific symbol"""
         return self._make_request('GET', f'/tickers/{symbol}')
