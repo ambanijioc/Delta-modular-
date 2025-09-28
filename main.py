@@ -862,6 +862,34 @@ async def test_correct_stop_command(update: Update, context: ContextTypes.DEFAUL
 
 # Add to initialize_bot function
 
+async def test_callback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test callback handling directly"""
+    try:
+        # Set up test context
+        context.user_data['trigger_price'] = 15.0
+        context.user_data['parent_order'] = {
+            'side': 'sell',
+            'symbol': 'BTC 112000 CE'
+        }
+        
+        # Create test keyboard
+        keyboard = [
+            [InlineKeyboardButton("📊 Test Percentage", callback_data="sl_limit_percentage")],
+            [InlineKeyboardButton("💰 Test Absolute", callback_data="sl_limit_absolute")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            "<b>🧪 Callback Test</b>\n\nTrigger: $15.00\nTry the buttons below:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Test failed: {e}")
+
+# Add to initialize_bot function
+
 async def check_permissions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Check API key permissions"""
     try:
@@ -1197,6 +1225,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
         application.add_handler(CommandHandler("checkperms", check_permissions_command))
         application.add_handler(CommandHandler("testcorrect", test_correct_stop_command))
+        application.add_handler(CommandHandler("testcb", test_callback_command))
         application.add_handler(CommandHandler("debugmatch", debug_matching_command))
         application.add_handler(CallbackQueryHandler(callback_handler))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
