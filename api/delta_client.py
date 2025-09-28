@@ -327,8 +327,8 @@ class DeltaClient:
                     stop_price: str = None, limit_price: str = None,
                     trail_amount: str = None, order_type: str = "market_order",
                     isTrailingStopLoss: bool = False) -> Dict:
-    """Place a stop-loss order"""
-    payload = {
+        """Place a stop-loss order"""
+        payload = {
         "product_id": product_id,
         "size": size,
         "side": side,
@@ -346,13 +346,13 @@ class DeltaClient:
     logger.info(f"📋 Placing stop order: {side} {size} contracts, product {product_id}")
     return self._make_request('POST', '/orders/stop', payload=json.dumps(payload))
 
-def get_order_by_id(self, order_id: str) -> Dict:
-    """Get order details by order ID"""
+    def get_order_by_id(self, order_id: str) -> Dict:
+        """Get order details by order ID"""
     logger.info(f"📊 Fetching order details for ID: {order_id}")
     return self._make_request('GET', f'/orders/{order_id}')
 
-def get_stop_orders(self, product_id: int = None) -> Dict:
-    """Get all stop orders"""
+    def get_stop_orders(self, product_id: int = None) -> Dict:
+        """Get all stop orders"""
     params = {}
     if product_id:
         params['product_id'] = product_id
@@ -360,7 +360,7 @@ def get_stop_orders(self, product_id: int = None) -> Dict:
     logger.info("📊 Fetching stop orders...")
     return self._make_request('GET', '/orders/stop', params)
 
-def cancel_stop_order(self, order_id: str) -> Dict:
-    """Cancel a stop order"""
+    def cancel_stop_order(self, order_id: str) -> Dict:
+        """Cancel a stop order"""
     logger.info(f"❌ Cancelling stop order: {order_id}")
     return self._make_request('DELETE', f'/orders/stop/{order_id}')
