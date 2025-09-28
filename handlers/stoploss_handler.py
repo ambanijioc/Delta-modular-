@@ -314,54 +314,6 @@ Type your limit price:
         context.user_data['waiting_for_limit_absolute'] = True
         await query.edit_message_text(message, parse_mode=ParseMode.HTML)
     
-    async def handle_limit_percentage_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle percentage limit price input"""
-        try:
-            if not context.user_data.get('waiting_for_limit_percentage'):
-                return
-            
-            user_input = update.message.text.strip()
-            trigger_price = context.user_data.get('trigger_price', 0)
-            parent_order = context.user_data.get('parent_order', {})
-            side = parent_order.get('side', '').lower()
-            
-            try:
-                percentage = float(user_input)
-                if percentage <= 0 or percentage >= 50:
-                    await update.message.reply_text("❌ Percentage must be between 0 and 50")
-                    return
-                    
-            except ValueError:
-                await update.message.reply_text("❌ Please enter a valid number (e.g., 5 for 5%)")
-                return
-            
-            # Calculate limit price based on percentage
-            if side == 'buy':  # Long position - selling to exit
-                limit_price = trigger_price * (1 - percentage / 100)  # Below trigger
-            else:  # Short position - buying to exit
-                limit_price = trigger_price * (1 + percentage / 100)  # Above trigger
-            
-            context.user_data['limit_price'] = limit_price
-            context.user_data['waiting_for_limit_percentage'] = False
-            
-            # Show confirmation and execute
-            confirmation = f"""
-<b>✅ Limit Price Calculated</b>
-
-<b>Percentage:</b> {percentage}%
-<b>Trigger Price:</b> ${trigger_price:,.4f}
-<b>Calculated Limit:</b> ${limit_price:,.4f}
-
-Proceeding with stop-loss order...
-            """.strip()
-            
-            await update.message.reply_text(confirmation, parse_mode=ParseMode.HTML)
-            await self._execute_stoploss_order(update, context)
-                
-        except Exception as e:
-            logger.error(f"Error in handle_limit_percentage_input: {e}", exc_info=True)
-            await update.message.reply_text("❌ An error occurred processing percentage.")
-    
     async def handle_limit_absolute_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle absolute limit price input"""
         try:
