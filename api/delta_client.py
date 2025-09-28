@@ -661,87 +661,69 @@ class DeltaClient:
         return self._make_request('GET', '/fills', params)
             
     def place_stop_order(self, product_id: int, size: int, side: str, 
-                    stop_price: str = None, limit_price: str = None,
-                    trail_amount: str = None, order_type: str = "limit_order",
-                    isTrailingStopLoss: bool = False, reduce_only: bool = True) -> Dict:
-        """Place a real stop-loss order with enhanced debugging"""
+                        stop_price: str = None, limit_price: str = None,
+                        trail_amount: str = None, order_type: str = "limit_order",
+                        isTrailingStopLoss: bool = False, reduce_only: bool = True) -> Dict:
+        """Place a real stop-loss order using correct Delta Exchange API"""
         try:
-            logger.info(f"🔄 Starting stop order placement...")
+            logger.info(f"🔄 Placing stop order using /orders endpoint...")
             logger.info(f"📋 Parameters: product_id={product_id}, size={size}, side={side}")
-            logger.info(f"📋 Stop price={stop_price}, limit_price={limit_price}")
-            logger.info(f"📋 Order type={order_type}, reduce_only={reduce_only}")
         
-        # Validate required parameters
-            if not product_id:
-                error_msg = "Product ID is required"
+            # Validate required parameters
+            if not product_id or not size or not side:
+                error_msg = "Product ID, size, and side are required"
                 logger.error(f"❌ {error_msg}")
                 return {"success": False, "error": error_msg}
         
-            if not size or size <= 0:
-                error_msg = "Size must be greater than 0"
-                logger.error(f"❌ {error_msg}")
-                return {"success": False, "error": error_msg}
-        
-            if not side or side not in ['buy', 'sell']:
-                error_msg = "Side must be 'buy' or 'sell'"
-                logger.error(f"❌ {error_msg}")
-                return {"success": False, "error": error_msg}
-        
-        # Prepare the order payload
+            # Base payload for all stop orders
             payload = {
                 "product_id": int(product_id),
                 "size": int(size),
                 "side": side,
                 "reduce_only": reduce_only,
-                "time_in_force": "gtc"  # Good till cancelled
+                "time_in_force": "gtc",
+                "post_only": False
             }
         
             if isTrailingStopLoss:
                 # Trailing stop order
-                if not trail_amount:
-                    error_msg = "Trail amount is required for trailing stops"
-                    logger.error(f"❌ {error_msg}")
-                    return {"success": False, "error": error_msg}
-            
                 payload.update({
-                    "trail_amount": str(trail_amount),
-                    "order_type": "market_order"
-            })
-                logger.info(f"📋 Trailing stop payload prepared")
+                    "order_type": "market_order",
+                    "stop_order_type": "stop_loss_order",  # This makes it a stop order
+                    "trail_amount": str(trail_amount)
+                })
+                logger.info(f"📋 Trailing stop order with trail_amount: {trail_amount}")
             else:
             # Regular stop order
-                if not stop_price:
-                    error_msg = "Stop price is required"
-                    logger.error(f"❌ {error_msg}")
-                    return {"success": False, "error": error_msg}
-            
+            if order_type == "limit_order":
                 payload.update({
+                    "order_type": "limit_order",
+                    "stop_order_type": "stop_loss_order",  # This makes it a stop order
                     "stop_price": str(stop_price),
-                    "order_type": order_type
-            })
-            
-                if order_type == "limit_order":
-                    if not limit_price:
-                        error_msg = "Limit price is required for limit orders"
-                        logger.error(f"❌ {error_msg}")
-                        return {"success": False, "error": error_msg}
-                    payload["limit_price"] = str(limit_price)
-            
-                logger.info(f"📋 Stop order payload prepared")
+                    "limit_price": str(limit_price)
+                })
+                logger.info(f"📋 Stop limit order: stop={stop_price}, limit={limit_price}")
+            else:
+                    # Market stop order
+                    payload.update({
+                        "order_type": "market_order", 
+                        "stop_order_type": "stop_loss_order",  # This makes it a stop order
+                        "stop_price": str(stop_price)
+                    })
+                    logger.info(f"📋 Stop market order: stop={stop_price}")
         
             logger.info(f"📤 Final payload: {json.dumps(payload, indent=2)}")
         
-        # Make the API call
-            logger.info(f"🌐 Making API call to /orders/stop")
-            response = self._make_request('POST', '/orders/stop', payload=json.dumps(payload))
+            # Use the correct /orders endpoint (not /orders/stop)
+            response = self._make_request('POST', '/orders', payload=json.dumps(payload))
         
-            logger.info(f"📥 API response received: {response}")
+            logger.info(f"📥 API response: {response}")
         
             if response.get('success'):
                 result = response.get('result', {})
-                order_id = result.get('id', 'Missing ID')
-                order_state = result.get('state', 'Unknown state')
-                logger.info(f"✅ Stop order placed successfully: ID={order_id}, State={order_state}")
+                order_id = result.get('id', 'Missing')
+                order_state = result.get('state', 'Unknown')
+                logger.info(f"✅ Stop order placed: ID={order_id}, State={order_state}")
             else:
                 error = response.get('error', 'Unknown error')
                 logger.error(f"❌ Stop order failed: {error}")
@@ -749,8 +731,48 @@ class DeltaClient:
             return response
         
         except Exception as e:
-            logger.error(f"❌ Exception in place_stop_order: {e}", exc_info=True)
-            return {"success": False, "error": f"Exception: {str(e)}"}
+            logger.error(f"❌ Exception placing stop order: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+def get_stop_orders(self, product_id: int = None) -> Dict:
+    """Get stop orders using the correct endpoint"""
+    params = {"states": "open,pending"}  # Only get active orders
+    if product_id:
+        params['product_id'] = product_id
+    
+    logger.info("📊 Fetching stop orders...")
+    return self._make_request('GET', '/orders', params)
+
+def cancel_stop_order(self, order_id: str) -> Dict:
+    """Cancel a specific stop order"""
+    logger.info(f"❌ Cancelling stop order: {order_id}")
+    return self._make_request('DELETE', f'/orders/{order_id}')
+
+def cancel_all_stop_orders(self, product_id: int = None) -> Dict:
+    """Cancel all stop orders"""
+    try:
+        # First get all stop orders
+        stop_orders = self.get_stop_orders(product_id)
+        
+        if not stop_orders.get('success'):
+            return stop_orders
+        
+        orders = stop_orders.get('result', [])
+        cancelled_orders = []
+        
+        # Cancel each stop order individually
+        for order in orders:
+            if order.get('stop_order_type') == 'stop_loss_order':
+                cancel_result = self.cancel_stop_order(str(order.get('id')))
+                if cancel_result.get('success'):
+                    cancelled_orders.append(order.get('id'))
+        
+        logger.info(f"✅ Cancelled {len(cancelled_orders)} stop orders")
+        return {"success": True, "result": cancelled_orders}
+        
+    except Exception as e:
+        logger.error(f"❌ Error cancelling stop orders: {e}")
+        return {"success": False, "error": str(e)}
     
     def get_margined_position(self, product_id: int) -> Dict:
         """Get margined position for a specific product"""
