@@ -18,6 +18,7 @@ from handlers.expiry_handler import ExpiryHandler
 from handlers.options_handler import OptionsHandler
 from handlers.position_handler import PositionHandler
 from utils.constants import START_MESSAGE, HELP_MESSAGE
+from utils.helpers import format_enhanced_positions_message
 from handlers.stoploss_handler import StopLossHandler
 
 # Initialize logging
