@@ -142,6 +142,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         query = update.callback_query
         data = query.data
+
+        if data == "test_simple":
+            await query.edit_message_text("✅ Simple callback works!")
+            return
         
         logger.info(f"=== CALLBACK DEBUG START ===")
         logger.info(f"Callback data: '{data}'")
