@@ -23,6 +23,119 @@ def format_expiry_message(expiry_date: str, spot_price: float, atm_strike: float
     
     return message
 
+def format_enhanced_positions_with_live_data(positions: List[Dict]) -> str:
+    """Enhanced format positions with live market data and proper symbols"""
+    message = "<b>📊 Open Positions</b>\n\n"
+    
+    if not positions:
+        return "<b>📊 No Open Positions</b>\n\nYou currently have no active positions."
+    
+    for i, position in enumerate(positions[:10], 1):
+        # Get enhanced product data
+        product = position.get('product', {})
+        
+        # Use the actual symbol from enhanced data
+        symbol = product.get('symbol', 'Unknown')
+        
+        # Format the symbol for better display
+        display_symbol = format_option_symbol_for_display(symbol)
+        
+        # Position details
+        size = float(position.get('size', 0))
+        entry_price = float(position.get('entry_price', 0))
+        mark_price = float(position.get('mark_price', 0))
+        pnl = float(position.get('unrealized_pnl', 0))
+        
+        # Get live market data if mark price is 0
+        product_id = product.get('id') or position.get('product_id')
+        if mark_price == 0 and product_id:
+            live_data = get_live_market_data(product_id)
+            if live_data:
+                mark_price = live_data.get('mark_price', 0)
+                # Recalculate PnL if we have live mark price
+                if mark_price > 0 and entry_price > 0:
+                    if size > 0:  # Long position
+                        pnl = (mark_price - entry_price) * abs(size)
+                    else:  # Short position
+                        pnl = (entry_price - mark_price) * abs(size)
+        
+        # Determine position type and emoji
+        if size > 0:
+            side = "LONG"
+            side_emoji = "📈"
+        elif size < 0:
+            side = "SHORT"
+            side_emoji = "📉"
+        else:
+            continue  # Skip zero positions
+        
+        # PnL formatting
+        pnl_emoji = "🟢" if pnl >= 0 else "🔴"
+        pnl_text = f"{pnl_emoji} ${pnl:,.2f}"
+        
+        # Price formatting
+        entry_text = f"${entry_price:,.4f}" if entry_price > 0 else "N/A"
+        mark_text = f"${mark_price:,.4f}" if mark_price > 0 else "N/A"
+        
+        message += f"<b>{i}. {display_symbol}</b> {side_emoji}\n"
+        message += f"   Side: {side}\n"
+        message += f"   Size: {abs(size):,.0f} contracts\n"
+        message += f"   Entry: {entry_text}\n"
+        message += f"   Mark: {mark_text}\n"
+        message += f"   PnL: {pnl_text}\n"
+        
+        message += "\n"
+    
+    return message
+
+def get_live_market_data(product_id: int) -> Dict:
+    """Get live market data for a product"""
+    try:
+        from api.delta_client import DeltaClient
+        
+        # You'll need to pass delta_client instance here
+        # For now, we'll return None and fix this in the next step
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error getting live market data: {e}")
+        return None
+
+def format_option_symbol_for_display(symbol: str) -> str:
+    """Format option symbol for better readability"""
+    if not symbol or symbol == 'Unknown':
+        return 'Unknown Position'
+    
+    # Handle Delta Exchange format: C-BTC-112000-290925
+    if '-' in symbol:
+        parts = symbol.split('-')
+        if len(parts) >= 4:
+            option_type = parts[0]  # C or P
+            underlying = parts[1]   # BTC
+            strike = parts[2]       # 112000
+            expiry = parts[3]       # 290925
+            
+            # Convert option type
+            if option_type == 'C':
+                option_name = 'CE'
+            elif option_type == 'P':
+                option_name = 'PE'
+            else:
+                option_name = option_type
+            
+            # Format expiry date if needed (optional)
+            if len(expiry) == 6:  # DDMMYY format
+                day = expiry[:2]
+                month = expiry[2:4]
+                year = expiry[4:6]
+                formatted_date = f" ({day}/{month})"
+                return f"{underlying} {strike} {option_name}{formatted_date}"
+            
+            return f"{underlying} {strike} {option_name}"
+    
+    # Return original symbol if not in expected format
+    return symbol
+
 def format_positions_message(positions: List[Dict]) -> str:
     """Enhanced format positions display message"""
     message = "<b>📊 Open Positions</b>\n\n"
