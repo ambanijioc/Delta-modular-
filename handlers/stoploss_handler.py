@@ -239,56 +239,56 @@ Choose input method:
         await update.message.reply_text(message, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
     
     async def handle_limit_price_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle limit price selection method - with debug logging"""
-    try:
-        query = update.callback_query
-        await query.answer()
+        """Handle limit price selection method - with debug logging"""
+        try:
+            query = update.callback_query
+            await query.answer()
         
-        logger.info(f"=== LIMIT PRICE SELECTION DEBUG ===")
-        logger.info(f"Callback data received: '{query.data}'")
-        logger.info(f"User data keys: {list(context.user_data.keys())}")
+            logger.info(f"=== LIMIT PRICE SELECTION DEBUG ===")
+            logger.info(f"Callback data received: '{query.data}'")
+            logger.info(f"User data keys: {list(context.user_data.keys())}")
         
-        if query.data == "sl_limit_percentage":
-            logger.info("Processing percentage selection")
-            await self._ask_percentage_limit_price(update, context)
-        elif query.data == "sl_limit_absolute":
-            logger.info("Processing absolute selection")
-            await self._ask_absolute_limit_price(update, context)
-        elif query.data == "sl_cancel":
-            logger.info("Processing cancel")
-            await query.edit_message_text("❌ Stop-loss setup cancelled.")
-        else:
-            logger.error(f"Unhandled callback data in limit price selection: {query.data}")
-            await query.edit_message_text("❌ Invalid selection. Please try again.")
+            if query.data == "sl_limit_percentage":
+                logger.info("Processing percentage selection")
+                await self._ask_percentage_limit_price(update, context)
+            elif query.data == "sl_limit_absolute":
+                logger.info("Processing absolute selection")
+                await self._ask_absolute_limit_price(update, context)
+            elif query.data == "sl_cancel":
+                logger.info("Processing cancel")
+                await query.edit_message_text("❌ Stop-loss setup cancelled.")
+            else:
+                logger.error(f"Unhandled callback data in limit price selection: {query.data}")
+                await query.edit_message_text("❌ Invalid selection. Please try again.")
         
-        logger.info("=== END LIMIT PRICE SELECTION DEBUG ===")
+            logger.info("=== END LIMIT PRICE SELECTION DEBUG ===")
         
-    except Exception as e:
-        logger.error(f"Error in handle_limit_price_selection: {e}", exc_info=True)
-        await query.edit_message_text("❌ An error occurred. Please try again.")
+        except Exception as e:
+            logger.error(f"Error in handle_limit_price_selection: {e}", exc_info=True)
+            await query.edit_message_text("❌ An error occurred. Please try again.")
     
     async def _ask_percentage_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ask for percentage-based limit price - with debug logging"""
-    try:
-        query = update.callback_query
-        trigger_price = context.user_data.get('trigger_price', 0)
-        parent_order = context.user_data.get('parent_order', {})
-        side = parent_order.get('side', '').lower()
+        """Ask for percentage-based limit price - with debug logging"""
+        try:
+            query = update.callback_query
+            trigger_price = context.user_data.get('trigger_price', 0)
+            parent_order = context.user_data.get('parent_order', {})
+            side = parent_order.get('side', '').lower()
         
-        logger.info(f"=== PERCENTAGE LIMIT PRICE DEBUG ===")
-        logger.info(f"Trigger price: {trigger_price}")
-        logger.info(f"Parent order side: {side}")
-        logger.info(f"Setting waiting_for_limit_percentage = True")
+            logger.info(f"=== PERCENTAGE LIMIT PRICE DEBUG ===")
+            logger.info(f"Trigger price: {trigger_price}")
+            logger.info(f"Parent order side: {side}")
+            logger.info(f"Setting waiting_for_limit_percentage = True")
         
         # Determine appropriate percentage range based on position side
-        if side == 'buy':  # Long position - selling to exit
-            suggestion = "3-8% below trigger (e.g., 5 for 5% below)"
-            example = f"5% → ${trigger_price * 0.95:.4f}"
-        else:  # Short position - buying to exit
-            suggestion = "3-8% above trigger (e.g., 5 for 5% above)"  
-            example = f"5% → ${trigger_price * 1.05:.4f}"
+            if side == 'buy':  # Long position - selling to exit
+                suggestion = "3-8% below trigger (e.g., 5 for 5% below)"
+                example = f"5% → ${trigger_price * 0.95:.4f}"
+            else:  # Short position - buying to exit
+                suggestion = "3-8% above trigger (e.g., 5 for 5% above)"  
+                example = f"5% → ${trigger_price * 1.05:.4f}"
         
-        message = f"""
+            message = f"""
 <b>📊 Enter Limit Price as Percentage</b>
 
 <b>Trigger Price:</b> ${trigger_price:,.4f}
@@ -301,16 +301,16 @@ Choose input method:
 Example: 5 (for 5% buffer)
         """.strip()
         
-        context.user_data['waiting_for_limit_percentage'] = True
-        logger.info(f"User data after setting flag: {list(context.user_data.keys())}")
+            context.user_data['waiting_for_limit_percentage'] = True
+            logger.info(f"User data after setting flag: {list(context.user_data.keys())}")
         
-        await query.edit_message_text(message, parse_mode=ParseMode.HTML)
-        logger.info("Message sent successfully")
-        logger.info("=== END PERCENTAGE LIMIT PRICE DEBUG ===")
+            await query.edit_message_text(message, parse_mode=ParseMode.HTML)
+            logger.info("Message sent successfully")
+            logger.info("=== END PERCENTAGE LIMIT PRICE DEBUG ===")
         
-    except Exception as e:
-        logger.error(f"Error in _ask_percentage_limit_price: {e}", exc_info=True)
-        await query.edit_message_text("❌ An error occurred asking for percentage.")
+        except Exception as e:
+            logger.error(f"Error in _ask_percentage_limit_price: {e}", exc_info=True)
+            await query.edit_message_text("❌ An error occurred asking for percentage.")
     
     async def _ask_absolute_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Ask for absolute limit price"""
