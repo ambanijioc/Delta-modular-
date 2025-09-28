@@ -522,6 +522,88 @@ async def debug_raw_positions_command(update: Update, context: ContextTypes.DEFA
     except Exception as e:
         await update.message.reply_text(f"❌ Debug failed: {e}")
 
+async def debug_stop_order_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug stop order placement with detailed logging"""
+    try:
+        logger.info(f"Debug stop order from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Testing stop order placement...")
+        
+        # Get your current position first
+        positions = delta_client.force_enhance_positions()
+        
+        if not positions.get('success') or not positions.get('result'):
+            await loading_msg.edit_text("❌ No positions found for testing")
+            return
+        
+        position = positions['result'][0]  # First position
+        product_id = position.get('product', {}).get('id') or position.get('product_id')
+        size = abs(int(position.get('size', 0)))
+        current_side = 'buy' if float(position.get('size', 0)) > 0 else 'sell'
+        exit_side = 'sell' if current_side == 'buy' else 'buy'
+        
+        if not product_id:
+            await loading_msg.edit_text("❌ Product ID not found in position data")
+            return
+        
+        debug_info = f"""<b>🔍 Stop Order Debug Test</b>
+
+<b>Position Data:</b>
+• Product ID: {product_id}
+• Current Size: {position.get('size')}
+• Current Side: {current_side}
+• Exit Side: {exit_side}
+• Entry Price: ${position.get('entry_price')}
+
+<b>Test Order Parameters:</b>
+• Product ID: {product_id}
+• Size: {size}
+• Side: {exit_side}
+• Stop Price: $10.00
+• Limit Price: $11.00
+• Reduce Only: True
+
+<b>Testing API call...</b>"""
+        
+        await loading_msg.edit_text(debug_info, parse_mode=ParseMode.HTML)
+        
+        # Test the actual API call
+        result = delta_client.place_stop_order(
+            product_id=product_id,
+            size=size,
+            side=exit_side,
+            stop_price="10.00",
+            limit_price="11.00",
+            order_type="limit_order",
+            reduce_only=True
+        )
+        
+        # Show detailed result
+        debug_result = f"""<b>🔍 API Response Debug</b>
+
+<b>Success:</b> {result.get('success')}
+
+<b>Raw Response:</b>
+<code>{json.dumps(result, indent=2)}</code>
+
+<b>Analysis:</b>"""
+        
+        if result.get('success'):
+            order_id = result.get('result', {}).get('id', 'Missing')
+            debug_result += f"\n✅ Order placed successfully\n• Order ID: {order_id}"
+        else:
+            error = result.get('error', 'No error info')
+            debug_result += f"\n❌ Order failed\n• Error: {error}"
+        
+        await loading_msg.edit_text(debug_result, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in debug_stop_order_command: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Debug failed: {e}")
+
+# Add to initialize_bot function
+application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
+
 async def debug_matching_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Debug: Test the product matching process with fixed API calls"""
     try:
