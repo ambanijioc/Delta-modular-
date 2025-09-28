@@ -218,8 +218,8 @@ class OptionsHandler:
             logger.warning(f"Error clearing trade data: {e}")
 
     def create_position_actions_keyboard(self, order_id: str) -> InlineKeyboardMarkup:
-    """Create keyboard for position actions including stop-loss"""
-    keyboard = [
+        """Create keyboard for position actions including stop-loss"""
+        keyboard = [
         [InlineKeyboardButton("🛡️ Add Stop-Loss", callback_data=f"add_stoploss_{order_id}")],
         [InlineKeyboardButton("📊 View Details", callback_data=f"view_order_{order_id}")],
         [InlineKeyboardButton("❌ Close Position", callback_data=f"close_position_{order_id}")]
