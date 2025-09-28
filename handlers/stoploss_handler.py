@@ -121,42 +121,45 @@ Example: {suggested_price:.2f}
         await query.edit_message_text(message, parse_mode=ParseMode.HTML)
     
     async def handle_limit_percentage_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle percentage limit price input - converts to absolute"""
+        """Handle percentage limit price input - KEEP THIS ONE"""
         try:
+            logger.info(f"=== PERCENTAGE INPUT DEBUG ===")
+            logger.info(f"waiting_for_limit_percentage: {context.user_data.get('waiting_for_limit_percentage')}")
+        
             if not context.user_data.get('waiting_for_limit_percentage'):
-                logger.info("Not waiting for percentage input")
+                logger.info("❌ Not waiting for percentage input - exiting")
                 return
-            
+        
             user_input = update.message.text.strip()
             trigger_price = context.user_data.get('trigger_price', 0)
             parent_order = context.user_data.get('parent_order', {})
             side = parent_order.get('side', '').lower()
-            
+        
             logger.info(f"Processing percentage input: {user_input}")
-            
+        
             try:
                 percentage = float(user_input)
                 if percentage <= 0 or percentage >= 50:
                     await update.message.reply_text("❌ Percentage must be between 0 and 50")
                     return
-                    
+                
             except ValueError:
                 await update.message.reply_text("❌ Please enter a valid number (e.g., 5 for 5%)")
                 return
-            
-            # Convert percentage to absolute price (this is where conversion happens!)
+        
+        # Convert percentage to absolute price
             if side == 'buy':  # Long position - selling to exit, limit below trigger
                 limit_price = trigger_price * (1 - percentage / 100)
             else:  # Short position - buying to exit, limit above trigger
                 limit_price = trigger_price * (1 + percentage / 100)
-            
-            # Store the calculated absolute price
+        
+        # Store the calculated absolute price
             context.user_data['limit_price'] = limit_price
             context.user_data['waiting_for_limit_percentage'] = False
-            
-            logger.info(f"Converted {percentage}% to absolute price: ${limit_price:.4f}")
-            
-            # Show confirmation
+        
+            logger.info(f"✅ Converted {percentage}% to absolute price: ${limit_price:.4f}")
+        
+        # Show confirmation
             confirmation = f"""
 <b>✅ Limit Price Calculated</b>
 
@@ -164,15 +167,14 @@ Example: {suggested_price:.2f}
 <b>Trigger Price:</b> ${trigger_price:,.4f}
 <b>Calculated Limit:</b> ${limit_price:,.4f}
 
-<b>Converting to absolute value for API...</b>
 Proceeding with stop-loss order...
-            """.strip()
-            
+        """.strip()
+        
             await update.message.reply_text(confirmation, parse_mode=ParseMode.HTML)
-            
-            # Execute with absolute price
             await self._execute_stoploss_order(update, context)
-                
+        
+            logger.info("=== END PERCENTAGE INPUT DEBUG ===")
+            
         except Exception as e:
             logger.error(f"Error in handle_limit_percentage_input: {e}", exc_info=True)
             await update.message.reply_text("❌ An error occurred processing percentage.")
