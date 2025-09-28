@@ -602,7 +602,6 @@ async def debug_stop_order_command(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(f"❌ Debug failed: {e}")
 
 # Add to initialize_bot function
-application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
 
 async def debug_matching_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Debug: Test the product matching process with fixed API calls"""
@@ -1028,6 +1027,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("testforce", test_force_enhance_command))
         application.add_handler(CommandHandler("debugproducts", debug_products_command))
         application.add_handler(CommandHandler("debugrawpos", debug_raw_positions_command))
+        application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
         application.add_handler(CommandHandler("debugmatch", debug_matching_command))
         application.add_handler(CallbackQueryHandler(callback_handler))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
