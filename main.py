@@ -222,6 +222,48 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+async def show_positions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle show positions button click"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        logger.info("📊 Fetching positions for show positions callback")
+        
+        # Get enhanced positions
+        positions = delta_client.force_enhance_positions()
+        
+        if not positions.get('success'):
+            error_msg = positions.get('error', 'Unknown error')
+            await query.edit_message_text(f"❌ Failed to fetch positions: {error_msg}")
+            return
+        
+        positions_data = positions.get('result', [])
+        
+        if not positions_data:
+            message = "📊 <b>No Open Positions</b>\n\nYou currently have no active positions.\n\nUse 'Select Expiry' to start trading!"
+        else:
+            # Use enhanced position formatting
+            if 'format_enhanced_positions_with_live_data' in globals():
+                message = format_enhanced_positions_with_live_data(positions_data)
+            else:
+                message = format_basic_positions(positions_data)
+        
+        # Add back button
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        keyboard = [[InlineKeyboardButton("⬅️ Back to Main Menu", callback_data="back_to_main")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            message,
+            parse_mode=ParseMode.HTML,
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in show_positions_callback: {e}", exc_info=True)
+        await query.edit_message_text("❌ Failed to fetch positions.")
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors"""
     logger.error(f"Update {update} caused error {context.error}", exc_info=context.error)
