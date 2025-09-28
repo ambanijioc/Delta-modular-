@@ -70,15 +70,45 @@ class StopLossHandler:
         return InlineKeyboardMarkup(keyboard)
     
     def _extract_symbol_from_position(self, position: dict) -> str:
-        """Enhanced symbol extraction with multiple fallback strategies"""
-        # Try 1: Direct product symbol
+        """Enhanced symbol extraction with Delta Exchange format support"""
+        # Try 1: Direct product symbol (should work now with enhanced API calls)
         product = position.get('product', {})
         symbol = product.get('symbol', '')
         
+        logger.info(f"Raw symbol from product: '{symbol}'")
+        
+        # Check if we have a valid Delta Exchange format symbol
         if symbol and symbol != 'Unknown':
+            # Delta Exchange format examples:
+            # C-BTC-112000-290925 (Call, BTC, Strike 112000, Exp 29-09-25)
+            # P-BTC-85000-290925 (Put, BTC, Strike 85000, Exp 29-09-25)
+            if '-' in symbol:
+                parts = symbol.split('-')
+                if len(parts) >= 4:
+                    option_type = parts[0]  # C or P
+                    underlying = parts[1]   # BTC
+                    strike = parts[2]       # 112000
+                    expiry = parts[3]       # 290925
+                    
+                    # Format for better display
+                    if option_type in ['C', 'P']:
+                        option_name = 'CE' if option_type == 'C' else 'PE'
+                        
+                        # Format expiry date
+                        if len(expiry) == 6:  # DDMMYY format
+                            day = expiry[:2]
+                            month = expiry[2:4]
+                            year = '20' + expiry[4:6]
+                            formatted_expiry = f"{day}/{month}/{year}"
+                        else:
+                            formatted_expiry = expiry
+                        
+                        return f"{underlying} {strike} {option_name}"
+            
+            # Return the symbol as-is if it looks valid
             return symbol
         
-        # Try 2: Build from product components
+        # Try 2: Build from product components if symbol is missing/invalid
         underlying_asset = product.get('underlying_asset', {})
         if isinstance(underlying_asset, dict):
             base_symbol = underlying_asset.get('symbol', 'BTC')
@@ -88,31 +118,29 @@ class StopLossHandler:
         contract_type = product.get('contract_type', '').lower()
         strike_price = product.get('strike_price', '')
         
-        # Try to identify option type
-        if 'call' in contract_type or 'put' in contract_type:
-            option_type = 'CE' if 'call' in contract_type else 'PE'
-            if strike_price:
-                return f"{base_symbol} {strike_price} {option_type}"
-            else:
-                return f"{base_symbol} {option_type}"
-        elif 'future' in contract_type:
-            return f"{base_symbol} Future"
+        logger.info(f"Building from components: underlying={base_symbol}, contract_type={contract_type}, strike={strike_price}")
         
-        # Try 3: Check if we have any identifying information
+        # Enhanced option type detection
+        if 'call' in contract_type:
+            option_type = 'CE'
+        elif 'put' in contract_type:
+            option_type = 'PE'
+        elif 'option' in contract_type:
+            option_type = 'Option'
+        elif 'future' in contract_type or 'perpetual' in contract_type:
+            return f"{base_symbol} Future"
+        else:
+            option_type = 'Unknown'
+        
+        if strike_price and option_type in ['CE', 'PE']:
+            return f"{base_symbol} {strike_price} {option_type}"
+        elif option_type != 'Unknown':
+            return f"{base_symbol} {option_type}"
+        
+        # Try 3: Check product ID for clues
         product_id = product.get('id') or position.get('product_id')
         if product_id:
             return f"{base_symbol} #{product_id}"
-        
-        # Try 4: Use position data to infer
-        size = float(position.get('size', 0))
-        entry_price = float(position.get('entry_price', 0))
-        
-        # If we have entry price, try to infer if it's options or futures
-        if entry_price > 0:
-            if entry_price < 100:  # Likely options premium
-                return f"{base_symbol} Option"
-            else:  # Likely futures
-                return f"{base_symbol} Future"
         
         # Final fallback
         return f"{base_symbol} Position"
