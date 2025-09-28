@@ -787,27 +787,8 @@ def cancel_all_stop_orders(self, product_id: int = None) -> Dict:
         return self._make_request('GET', f'/orders/{order_id}')
 
     def get_stop_orders(self, product_id: int = None) -> Dict:
-        """Get stop orders - fixed method"""
-        try:
-            logger.info("🔍 Fetching stop orders...")
-            
-            # Simple call without parameters
-            response = self._make_request('GET', '/orders')
-            
-            if not response.get('success'):
-                logger.error(f"❌ Orders API failed: {response.get('error')}")
-                return response
-            
-            all_orders = response.get('result', [])
-            logger.info(f"📊 Retrieved {len(all_orders)} total orders")
-            
-            # Since we got 0 orders from your test, just return all of them
-            # We'll filter client-side when we have actual orders
-            return {"success": True, "result": all_orders}
-            
-        except Exception as e:
-            logger.error(f"❌ Exception in get_stop_orders: {e}")
-            return {"success": False, "error": str(e)}
+        """Ultra simple get orders"""
+        return self._make_request('GET', '/orders')
 
     def cancel_stop_order(self, order_id: str) -> Dict:
         """Cancel a stop order"""
