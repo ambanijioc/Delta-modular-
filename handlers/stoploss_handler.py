@@ -695,39 +695,52 @@ Type your trail amount:
             logger.error(f"ValueError parsing price: {e}")
             return False, 0, "Please enter a valid number or percentage (e.g., 25% or 15)"
     
-    async def _execute_stoploss_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Execute the stop-loss order"""
+        async def _execute_stoploss_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Execute real stop-loss order with Delta Exchange API"""
         try:
             parent_order = context.user_data.get('parent_order', {})
             stoploss_type = context.user_data.get('stoploss_type')
             trigger_price = context.user_data.get('trigger_price')
             limit_price = context.user_data.get('limit_price')
             
-            logger.info(f"Executing stop-loss: type={stoploss_type}, trigger={trigger_price}")
+            logger.info(f"Executing REAL stop-loss: type={stoploss_type}, trigger={trigger_price}")
             
             product_id = parent_order.get('product_id')
             size = abs(int(parent_order.get('size', 0)))  # Absolute size for exit
             side = 'sell' if parent_order.get('side') == 'buy' else 'buy'  # Opposite side
+            symbol = parent_order.get('symbol', 'Unknown')
             
-            loading_msg = await update.message.reply_text("🔄 Placing stop-loss order...")
+            if not product_id:
+                await update.message.reply_text("❌ Product ID not found. Cannot place real order.")
+                return
             
-            # For now, simulate the order (since we don't have real trading enabled)
-            # In real implementation, use the Delta API
+            loading_msg = await update.message.reply_text("🔄 Placing REAL stop-loss order...")
             
-            message = f"""<b>🛡️ Stop-Loss Order Simulated</b>
-
-✅ <b>Order Details:</b>
-• Symbol: {parent_order.get('symbol')}
-• Type: {stoploss_type.replace('_', ' ').title()}
-• Side: {side.title()}
-• Size: {size} contracts
-• Trigger Price: ${trigger_price:,.4f}
-"""
+            # Place the actual stop-loss order
+            if stoploss_type == "stop_market":
+                result = self.delta_client.place_stop_order(
+                    product_id=product_id,
+                    size=size,
+                    side=side,
+                    stop_price=str(trigger_price),
+                    order_type="market_order",
+                    reduce_only=True  # Critical: Only reduces position
+                )
+            else:  # stop_limit
+                result = self.delta_client.place_stop_order(
+                    product_id=product_id,
+                    size=size,
+                    side=side,
+                    stop_price=str(trigger_price),
+                    limit_price=str(limit_price),
+                    order_type="limit_order",
+                    reduce_only=True  # Critical: Only reduces position
+                )
             
-            if stoploss_type == "stop_limit" and limit_price:
-                message += f"• Limit Price: ${limit_price:,.4f}\n"
-            
-            message += f"\n<b>⚠️ Note:</b> This is a simulation. Real order placement requires additional API setup."
+            # Format and send result
+            message = self._format_real_stoploss_result(
+                result, stoploss_type, symbol, trigger_price, limit_price, size, side, product_id
+            )
             
             await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
             
@@ -736,7 +749,156 @@ Type your trail amount:
             
         except Exception as e:
             logger.error(f"Error in _execute_stoploss_order: {e}", exc_info=True)
-            await update.message.reply_text("❌ Failed to process stop-loss order.")
+            await update.message.reply_text("❌ Failed to place REAL stop-loss order. Check logs for details.")
+    
+    async def _execute_trailing_stop_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Execute real trailing stop order"""
+        try:
+            parent_order = context.user_data.get('parent_order', {})
+            trail_amount = context.user_data.get('trail_amount')
+            
+            product_id = parent_order.get('product_id')
+            size = abs(int(parent_order.get('size', 0)))
+            side = 'sell' if parent_order.get('side') == 'buy' else 'buy'
+            symbol = parent_order.get('symbol', 'Unknown')
+            
+            if not product_id:
+                await update.message.reply_text("❌ Product ID not found. Cannot place real order.")
+                return
+            
+            loading_msg = await update.message.reply_text("🔄 Placing REAL trailing stop order...")
+            
+            result = self.delta_client.place_stop_order(
+                product_id=product_id,
+                size=size,
+                side=side,
+                trail_amount=str(trail_amount),
+                order_type="market_order",
+                isTrailingStopLoss=True,
+                reduce_only=True  # Critical: Only reduces position
+            )
+            
+            # Format and send result
+            message = self._format_real_trailing_stop_result(
+                result, symbol, trail_amount, size, side, product_id
+            )
+            
+            await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
+            
+            # Clear user data
+            self._clear_stoploss_data(context)
+            
+        except Exception as e:
+            logger.error(f"Error in _execute_trailing_stop_order: {e}", exc_info=True)
+            await update.message.reply_text("❌ Failed to place REAL trailing stop order.")
+    
+    def _format_real_stoploss_result(self, result: dict, stoploss_type: str, symbol: str, 
+                                   trigger_price: float, limit_price: float, size: int, 
+                                   side: str, product_id: int) -> str:
+        """Format real stop-loss order result message"""
+        try:
+            type_name = "Stop Market" if stoploss_type == "stop_market" else "Stop Limit"
+            
+            message = f"<b>🛡️ REAL {type_name} Order</b>\n\n"
+            
+            if result.get('success'):
+                order_data = result.get('result', {})
+                order_id = order_data.get('id', 'N/A')
+                order_status = order_data.get('state', 'Unknown')
+                
+                message += f"✅ <b>Order Placed Successfully!</b>\n\n"
+                message += f"<b>Order Details:</b>\n"
+                message += f"• Order ID: <code>{order_id}</code>\n"
+                message += f"• Symbol: {symbol}\n"
+                message += f"• Product ID: {product_id}\n"
+                message += f"• Type: {type_name} (Reduce-Only)\n"
+                message += f"• Side: {side.title()}\n"
+                message += f"• Size: {size} contracts\n"
+                message += f"• Trigger Price: ${trigger_price:,.4f}\n"
+                
+                if stoploss_type == "stop_limit" and limit_price:
+                    message += f"• Limit Price: ${limit_price:,.4f}\n"
+                
+                message += f"• Status: {order_status}\n"
+                message += f"• Time in Force: GTC\n"
+                
+                message += f"\n<b>🛡️ Protection Active!</b>\n"
+                message += f"Your position is now protected with a real stop-loss order.\n\n"
+                message += f"<b>⚠️ Risk Management:</b>\n"
+                message += f"• This is a <b>reduce-only</b> order\n"
+                message += f"• Will only close your existing position\n"
+                message += f"• Cannot increase position in opposite direction\n"
+                message += f"• Use /orders to view all active orders"
+                
+            else:
+                error_data = result.get('error', {})
+                error_code = error_data.get('code', 'unknown')
+                error_message = error_data.get('message', str(error_data))
+                
+                message += f"❌ <b>Order Failed</b>\n\n"
+                message += f"<b>Error Details:</b>\n"
+                message += f"• Code: {error_code}\n"
+                message += f"• Message: {error_message}\n\n"
+                
+                # Provide helpful suggestions based on error type
+                if 'insufficient' in error_message.lower():
+                    message += f"<b>💡 Suggestion:</b> Check account balance and margin requirements.\n"
+                elif 'invalid' in error_message.lower():
+                    message += f"<b>💡 Suggestion:</b> Verify trigger price and limit price values.\n"
+                elif 'permission' in error_message.lower():
+                    message += f"<b>💡 Suggestion:</b> Check API key permissions for trading.\n"
+                else:
+                    message += f"<b>💡 Suggestion:</b> Try again or contact support if issue persists.\n"
+            
+            return message
+            
+        except Exception as e:
+            logger.error(f"Error formatting real stop-loss result: {e}")
+            return f"Stop-loss order processed. Check your orders for details.\nOrder ID: {result.get('result', {}).get('id', 'Unknown')}"
+    
+    def _format_real_trailing_stop_result(self, result: dict, symbol: str, 
+                                        trail_amount: float, size: int, side: str, product_id: int) -> str:
+        """Format real trailing stop result message"""
+        try:
+            message = f"<b>📈 REAL Trailing Stop Order</b>\n\n"
+            
+            if result.get('success'):
+                order_data = result.get('result', {})
+                order_id = order_data.get('id', 'N/A')
+                order_status = order_data.get('state', 'Unknown')
+                
+                message += f"✅ <b>Order Placed Successfully!</b>\n\n"
+                message += f"<b>Order Details:</b>\n"
+                message += f"• Order ID: <code>{order_id}</code>\n"
+                message += f"• Symbol: {symbol}\n"
+                message += f"• Product ID: {product_id}\n"
+                message += f"• Type: Trailing Stop (Reduce-Only)\n"
+                message += f"• Side: {side.title()}\n"
+                message += f"• Size: {size} contracts\n"
+                message += f"• Trail Amount: ${trail_amount:,.4f}\n"
+                message += f"• Status: {order_status}\n"
+                
+                message += f"\n<b>📈 Dynamic Protection Active!</b>\n"
+                message += f"Your trailing stop will follow the market and lock in profits.\n\n"
+                message += f"<b>How it works:</b>\n"
+                message += f"• Stop follows market at ${trail_amount:,.4f} distance\n"
+                message += f"• Adjusts automatically when market moves favorably\n"
+                message += f"• Triggers market order when stop is hit\n"
+                message += f"• Reduce-only: Will only close your position"
+                
+            else:
+                error_data = result.get('error', {})
+                error_message = error_data.get('message', str(error_data))
+                
+                message += f"❌ <b>Order Failed</b>\n\n"
+                message += f"Error: {error_message}\n"
+                message += f"Please try again or check your position status."
+            
+            return message
+            
+        except Exception as e:
+            logger.error(f"Error formatting trailing stop result: {e}")
+            return f"Trailing stop order processed. Order ID: {result.get('result', {}).get('id', 'Unknown')}"
 
     async def _ask_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                               trigger_price: float, entry_price: float, side: str):
