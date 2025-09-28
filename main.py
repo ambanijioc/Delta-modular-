@@ -782,20 +782,25 @@ async def debug_matching_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text(f"❌ Matching debug failed: {e}")
 
 async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show active stop orders"""
+    """Show active stop orders - with debug"""
     try:
         logger.info(f"Orders command from user: {update.effective_user.id}")
         
         loading_msg = await update.message.reply_text("🔄 Fetching active orders...")
         
-        # Get stop orders
+        # Debug: Test the API call
+        logger.info("🔍 Testing stop orders API call...")
         stop_orders = delta_client.get_stop_orders()
+        logger.info(f"🔍 Stop orders response: {stop_orders}")
         
         if not stop_orders.get('success'):
-            await loading_msg.edit_text(f"❌ Failed to fetch orders: {stop_orders.get('error')}")
+            error = stop_orders.get('error', 'Unknown error')
+            logger.error(f"❌ Stop orders API failed: {error}")
+            await loading_msg.edit_text(f"❌ Failed to fetch orders: {error}")
             return
         
         orders_data = stop_orders.get('result', [])
+        logger.info(f"🔍 Found {len(orders_data)} orders")
         
         if not orders_data:
             await loading_msg.edit_text("📋 No active stop orders found.")
@@ -804,6 +809,8 @@ async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = "<b>📋 Active Stop Orders</b>\n\n"
         
         for i, order in enumerate(orders_data[:10], 1):
+            logger.info(f"🔍 Processing order {i}: {order}")
+            
             product = order.get('product', {})
             symbol = product.get('symbol', 'Unknown')
             order_id = order.get('id', 'N/A')
