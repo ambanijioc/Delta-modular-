@@ -734,15 +734,6 @@ class DeltaClient:
             logger.error(f"❌ Exception placing stop order: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
-def get_stop_orders(self, product_id: int = None) -> Dict:
-    """Get stop orders using the correct endpoint"""
-    params = {"states": "open,pending"}  # Only get active orders
-    if product_id:
-        params['product_id'] = product_id
-    
-    logger.info("📊 Fetching stop orders...")
-    return self._make_request('GET', '/orders', params)
-
 def cancel_stop_order(self, order_id: str) -> Dict:
     """Cancel a specific stop order"""
     logger.info(f"❌ Cancelling stop order: {order_id}")
@@ -804,13 +795,54 @@ def cancel_all_stop_orders(self, product_id: int = None) -> Dict:
         return self._make_request('GET', f'/orders/{order_id}')
 
     def get_stop_orders(self, product_id: int = None) -> Dict:
-        """Get all stop orders"""
-        params = {}
-        if product_id:
-            params['product_id'] = product_id
-    
-        logger.info("📊 Fetching stop orders...")
-        return self._make_request('GET', '/orders/stop', params)
+        """Get stop orders - fixed method"""
+        try:
+            logger.info("🔍 Fetching stop orders...")
+        
+        # Try different approaches to get orders
+            approaches = [
+            # Approach 1: Get all orders and filter for stop orders
+                {'endpoint': '/orders', 'params': {'states': 'open,pending'}},
+            
+            # Approach 2: Get orders with product filter if provided
+                {'endpoint': '/orders', 'params': {'states': 'open'} if not product_id else {'states': 'open', 'product_id': product_id}},
+            
+            # Approach 3: Simple orders call
+                {'endpoint': '/orders', 'params': {}}
+            ]
+        
+            for i, approach in enumerate(approaches, 1):
+                try:
+                    logger.info(f"🔄 Trying approach {i}: {approach['endpoint']} with params {approach['params']}")
+                    response = self._make_request('GET', approach['endpoint'], approach['params'])
+                
+                    if response.get('success'):
+                        orders = response.get('result', [])
+                        logger.info(f"✅ Approach {i} successful: {len(orders)} orders found")
+                    
+                    # Filter for stop orders if we got all orders
+                        stop_orders = []
+                        for order in orders:
+                            if order.get('stop_order_type') == 'stop_loss_order' or order.get('stop_price'):
+                                stop_orders.append(order)
+                    
+                        logger.info(f"📊 Filtered to {len(stop_orders)} stop orders")
+                    
+                        return {"success": True, "result": stop_orders}
+                    else:
+                        logger.warning(f"⚠️ Approach {i} failed: {response.get('error')}")
+                    
+                except Exception as e:
+                    logger.warning(f"⚠️ Approach {i} exception: {e}")
+                    continue
+        
+        # If all approaches fail
+            logger.error("❌ All approaches to fetch orders failed")
+            return {"success": False, "error": "All order fetching methods failed"}
+        
+        except Exception as e:
+            logger.error(f"❌ Error in get_stop_orders: {e}")
+            return {"success": False, "error": str(e)}
 
     def cancel_stop_order(self, order_id: str) -> Dict:
         """Cancel a stop order"""
