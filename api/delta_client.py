@@ -661,27 +661,85 @@ class DeltaClient:
         return self._make_request('GET', '/fills', params)
             
     def place_stop_order(self, product_id: int, size: int, side: str, 
-                    stop_price: str = None, limit_price: str = None,
-                    trail_amount: str = None, order_type: str = "market_order",
-                    isTrailingStopLoss: bool = False) -> Dict:
-        """Place a stop-loss order"""
-        payload = {
-            "product_id": product_id,
-            "size": size,
-            "side": side,
-            "order_type": order_type
-        }
+                        stop_price: str = None, limit_price: str = None,
+                        trail_amount: str = None, order_type: str = "limit_order",
+                        isTrailingStopLoss: bool = False, reduce_only: bool = True) -> Dict:
+        """Place a real stop-loss order with Delta Exchange API"""
+        try:
+            # Prepare the order payload
+            payload = {
+                "product_id": product_id,
+                "size": size,
+                "side": side,
+                "reduce_only": reduce_only  # Critical: Makes it reduce-only
+            }
+            
+            if isTrailingStopLoss:
+                # Trailing stop order
+                payload.update({
+                    "trail_amount": trail_amount,
+                    "order_type": "market_order"  # Trailing stops are market orders
+                })
+                logger.info(f"📋 Placing trailing stop order: {side} {size} contracts, trail: {trail_amount}")
+            else:
+                # Regular stop order
+                payload.update({
+                    "stop_price": stop_price,
+                    "order_type": order_type
+                })
+                
+                if order_type == "limit_order" and limit_price:
+                    payload["limit_price"] = limit_price
+                
+                logger.info(f"📋 Placing {order_type} stop order: {side} {size} contracts, stop: {stop_price}")
+            
+            # Add optional parameters for better execution
+            payload.update({
+                "time_in_force": "GTC",  # Good Till Cancelled
+                "post_only": False       # Allow immediate execution
+            })
+            
+            logger.info(f"📤 Stop order payload: {payload}")
+            
+            # Make the API call to place stop order
+            response = self._make_request('POST', '/orders/stop', payload=json.dumps(payload))
+            
+            if response.get('success'):
+                order_id = response.get('result', {}).get('id', 'Unknown')
+                logger.info(f"✅ Stop order placed successfully: ID {order_id}")
+            else:
+                error_msg = response.get('error', 'Unknown error')
+                logger.error(f"❌ Stop order failed: {error_msg}")
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"❌ Exception placing stop order: {e}")
+            return {"success": False, "error": str(e)}
     
-        if isTrailingStopLoss:
-            payload["trail_amount"] = trail_amount
-            payload["isTrailingStopLoss"] = True
-        else:
-            payload["stop_price"] = stop_price
-            if order_type == "limit_order" and limit_price:
-                payload["limit_price"] = limit_price
+    def get_margined_position(self, product_id: int) -> Dict:
+        """Get margined position for a specific product"""
+        logger.info(f"📊 Fetching margined position for product: {product_id}")
+        return self._make_request('GET', f'/positions/margined/{product_id}')
     
-        logger.info(f"📋 Placing stop order: {side} {size} contracts, product {product_id}")
-        return self._make_request('POST', '/orders/stop', payload=json.dumps(payload))
+    def get_position(self, product_id: int) -> Dict:
+        """Get position for a specific product"""
+        logger.info(f"📊 Fetching position for product: {product_id}")
+        return self._make_request('GET', f'/positions', {'product_id': product_id})
+    
+    def cancel_all_stop_orders(self, product_id: int = None) -> Dict:
+        """Cancel all stop orders for a product or all products"""
+        params = {}
+        if product_id:
+            params['product_id'] = product_id
+        
+        logger.info(f"❌ Cancelling stop orders for product: {product_id or 'ALL'}")
+        return self._make_request('DELETE', '/orders/stop/all', params)
+    
+    def get_order_status(self, order_id: str) -> Dict:
+        """Get status of a specific order"""
+        logger.info(f"📊 Checking order status: {order_id}")
+        return self._make_request('GET', f'/orders/{order_id}')
 
     def get_order_by_id(self, order_id: str) -> Dict:
         """Get order details by order ID"""
