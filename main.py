@@ -327,13 +327,14 @@ async def webhook_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Failed to check webhook status.")
 
 async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Enhanced positions command"""
+    """Enhanced positions command using force enhancement"""
     try:
         logger.info(f"Positions command from user: {update.effective_user.id}")
         
         loading_msg = await update.message.reply_text("🔄 Fetching positions...")
         
-        positions = delta_client.get_positions()
+        # Use the enhanced positions method directly
+        positions = delta_client.force_enhance_positions()
         portfolio = delta_client.get_portfolio_summary()
         
         if not positions.get('success'):
@@ -366,8 +367,8 @@ async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
             return
         
-        from utils.helpers import format_positions_message
-        message = format_positions_message(positions_data)
+        # Use enhanced message formatting
+        message = format_enhanced_positions_message(positions_data)
         
         if portfolio.get('success'):
             balances = portfolio.get('result', [])
