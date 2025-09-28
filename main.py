@@ -138,51 +138,58 @@ position_handler = PositionHandler(delta_client)
 stoploss_handler = StopLossHandler(delta_client)
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Debug callback handler to identify the issue"""
+    """Enhanced callback handler with proper stop-loss routing"""
     try:
         query = update.callback_query
         data = query.data
-
+        
+        logger.info(f"=== PROCESSING CALLBACK: {data} ===")
+        
+        # Test callback first
         if data == "test_simple":
             await query.edit_message_text("✅ Simple callback works!")
             return
         
-        logger.info(f"=== CALLBACK DEBUG START ===")
-        logger.info(f"Callback data: '{data}'")
-        logger.info(f"Available handlers: stoploss_handler={stoploss_handler is not None}")
-        
-        # Test if stoploss_handler exists and has the method
-        if hasattr(stoploss_handler, 'handle_limit_price_selection'):
-            logger.info("✅ stoploss_handler.handle_limit_price_selection exists")
-        else:
-            logger.error("❌ stoploss_handler.handle_limit_price_selection NOT found")
-        
-        # Handle specific stop-loss callbacks first
+        # Handle stop-loss specific callbacks FIRST
         if data == "sl_limit_percentage":
-            logger.info("🎯 Matched sl_limit_percentage - calling handler")
-            await stoploss_handler.handle_limit_price_selection(update, context)
-            logger.info("✅ Handler call completed")
+            logger.info("🎯 Processing percentage limit selection")
+            try:
+                await stoploss_handler.handle_limit_price_selection(update, context)
+                logger.info("✅ Percentage handler completed successfully")
+            except Exception as e:
+                logger.error(f"❌ Percentage handler failed: {e}", exc_info=True)
+                await query.edit_message_text("❌ Error processing percentage selection")
+            return
         
         elif data == "sl_limit_absolute":
-            logger.info("🎯 Matched sl_limit_absolute - calling handler")
-            await stoploss_handler.handle_limit_price_selection(update, context)
-            logger.info("✅ Handler call completed")
+            logger.info("🎯 Processing absolute limit selection")
+            try:
+                await stoploss_handler.handle_limit_price_selection(update, context)
+                logger.info("✅ Absolute handler completed successfully")
+            except Exception as e:
+                logger.error(f"❌ Absolute handler failed: {e}", exc_info=True)
+                await query.edit_message_text("❌ Error processing absolute selection")
+            return
         
         elif data == "sl_cancel":
-            logger.info("🎯 Matched sl_cancel")
+            logger.info("🎯 Processing cancel")
             await query.edit_message_text("❌ Stop-loss setup cancelled.")
+            return
         
         elif data.startswith("sl_select_pos_"):
-            logger.info("🎯 Matched sl_select_pos_")
+            logger.info("🎯 Processing position selection")
             await stoploss_handler.handle_position_selection(update, context)
+            return
         
         elif data.startswith("sl_type_"):
-            logger.info("🎯 Matched sl_type_")
+            logger.info("🎯 Processing stop-loss type selection")
             await stoploss_handler.handle_stoploss_type_selection(update, context)
+            return
         
         elif data.startswith("sl_limit_"):
-            logger.info("🎯 Matched generic sl_limit_")
+            logger.info("🎯 Processing generic limit selection")
             await stoploss_handler.handle_limit_price_selection(update, context)
+            return
         
         # Regular bot callbacks
         elif data == "select_expiry":
@@ -197,13 +204,13 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             order_id = data.replace("add_stoploss_", "")
             await stoploss_handler.show_stoploss_selection(update, context, order_id)
         else:
-            logger.warning(f"❌ No match found for callback: '{data}'")
+            logger.warning(f"❌ Unknown callback: {data}")
             await query.answer("Unknown option")
         
-        logger.info("=== CALLBACK DEBUG END ===")
+        logger.info(f"=== COMPLETED CALLBACK: {data} ===")
             
     except Exception as e:
-        logger.error(f"❌ Error in callback_handler: {e}", exc_info=True)
+        logger.error(f"❌ Critical error in callback_handler: {e}", exc_info=True)
         try:
             await update.callback_query.answer("❌ An error occurred")
         except:
