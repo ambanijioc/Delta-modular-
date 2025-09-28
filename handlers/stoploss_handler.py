@@ -22,13 +22,198 @@ class StopLossHandler:
         return InlineKeyboardMarkup(keyboard)
 
     def create_limit_price_keyboard(self) -> InlineKeyboardMarkup:
-        """Create keyboard for limit price selection - now percentage based"""
+        """Create keyboard for limit price selection - fixed callback data"""
         keyboard = [
-            [InlineKeyboardButton("✅ Enter as Percentage", callback_data="sl_limit_percentage")],
-            [InlineKeyboardButton("💰 Enter Absolute Price", callback_data="sl_limit_absolute")],
+            [InlineKeyboardButton("📊 Enter as Percentage", callback_data="sl_limit_percentage")],
+            [InlineKeyboardButton("💰 Enter Absolute Value", callback_data="sl_limit_absolute")],
             [InlineKeyboardButton("❌ Cancel", callback_data="sl_cancel")]
         ]
         return InlineKeyboardMarkup(keyboard)
+    
+    async def handle_limit_price_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle limit price selection method - fixed"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            logger.info(f"Limit price selection: {query.data}")
+            
+            if query.data == "sl_limit_percentage":
+                await self._ask_percentage_limit_price(update, context)
+            elif query.data == "sl_limit_absolute":
+                await self._ask_absolute_limit_price(update, context)
+            elif query.data == "sl_cancel":
+                await query.edit_message_text("❌ Stop-loss setup cancelled.")
+            else:
+                await query.edit_message_text("❌ Invalid selection. Please try again.")
+            
+        except Exception as e:
+            logger.error(f"Error in handle_limit_price_selection: {e}", exc_info=True)
+            await query.edit_message_text("❌ An error occurred. Please try again.")
+    
+    async def _ask_percentage_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Ask for percentage-based limit price"""
+        query = update.callback_query
+        trigger_price = context.user_data.get('trigger_price', 0)
+        parent_order = context.user_data.get('parent_order', {})
+        side = parent_order.get('side', '').lower()
+        
+        # Determine appropriate percentage range based on position side
+        if side == 'buy':  # Long position - selling to exit
+            suggestion = "3-8% below trigger (e.g., 5 for 5% below)"
+            example = f"5% → ${trigger_price * 0.95:.4f}"
+        else:  # Short position - buying to exit
+            suggestion = "3-8% above trigger (e.g., 5 for 5% above)"  
+            example = f"5% → ${trigger_price * 1.05:.4f}"
+        
+        message = f"""
+<b>📊 Enter Limit Price as Percentage</b>
+
+<b>Trigger Price:</b> ${trigger_price:,.4f}
+<b>Your Position:</b> {side.upper()} (need to {('sell' if side == 'buy' else 'buy')} to exit)
+
+<b>Example:</b> {example}
+<b>Recommended:</b> {suggestion}
+
+<b>Enter just the number (without % symbol):</b>
+Example: 5 (for 5% buffer)
+        """.strip()
+        
+        context.user_data['waiting_for_limit_percentage'] = True
+        await query.edit_message_text(message, parse_mode=ParseMode.HTML)
+    
+    async def _ask_absolute_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Ask for absolute limit price"""
+        query = update.callback_query
+        trigger_price = context.user_data.get('trigger_price', 0)
+        parent_order = context.user_data.get('parent_order', {})
+        side = parent_order.get('side', '').lower()
+        
+        # Suggest reasonable absolute prices
+        if side == 'buy':  # Long position - selling to exit
+            suggested_price = trigger_price * 0.95  # 5% below
+            advice = "should be ≤ trigger price"
+        else:  # Short position - buying to exit
+            suggested_price = trigger_price * 1.05  # 5% above
+            advice = "should be ≥ trigger price"
+        
+        message = f"""
+<b>💰 Enter Absolute Limit Price</b>
+
+<b>Trigger Price:</b> ${trigger_price:,.4f}
+<b>Suggested Price:</b> ${suggested_price:.4f}
+
+<b>For your position:</b> Limit {advice}
+
+<b>Enter exact dollar amount:</b>
+Example: {suggested_price:.2f}
+        """.strip()
+        
+        context.user_data['waiting_for_limit_absolute'] = True
+        await query.edit_message_text(message, parse_mode=ParseMode.HTML)
+    
+    async def handle_limit_percentage_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle percentage limit price input - converts to absolute"""
+        try:
+            if not context.user_data.get('waiting_for_limit_percentage'):
+                logger.info("Not waiting for percentage input")
+                return
+            
+            user_input = update.message.text.strip()
+            trigger_price = context.user_data.get('trigger_price', 0)
+            parent_order = context.user_data.get('parent_order', {})
+            side = parent_order.get('side', '').lower()
+            
+            logger.info(f"Processing percentage input: {user_input}")
+            
+            try:
+                percentage = float(user_input)
+                if percentage <= 0 or percentage >= 50:
+                    await update.message.reply_text("❌ Percentage must be between 0 and 50")
+                    return
+                    
+            except ValueError:
+                await update.message.reply_text("❌ Please enter a valid number (e.g., 5 for 5%)")
+                return
+            
+            # Convert percentage to absolute price (this is where conversion happens!)
+            if side == 'buy':  # Long position - selling to exit, limit below trigger
+                limit_price = trigger_price * (1 - percentage / 100)
+            else:  # Short position - buying to exit, limit above trigger
+                limit_price = trigger_price * (1 + percentage / 100)
+            
+            # Store the calculated absolute price
+            context.user_data['limit_price'] = limit_price
+            context.user_data['waiting_for_limit_percentage'] = False
+            
+            logger.info(f"Converted {percentage}% to absolute price: ${limit_price:.4f}")
+            
+            # Show confirmation
+            confirmation = f"""
+<b>✅ Limit Price Calculated</b>
+
+<b>Percentage:</b> {percentage}%
+<b>Trigger Price:</b> ${trigger_price:,.4f}
+<b>Calculated Limit:</b> ${limit_price:,.4f}
+
+<b>Converting to absolute value for API...</b>
+Proceeding with stop-loss order...
+            """.strip()
+            
+            await update.message.reply_text(confirmation, parse_mode=ParseMode.HTML)
+            
+            # Execute with absolute price
+            await self._execute_stoploss_order(update, context)
+                
+        except Exception as e:
+            logger.error(f"Error in handle_limit_percentage_input: {e}", exc_info=True)
+            await update.message.reply_text("❌ An error occurred processing percentage.")
+    
+    async def handle_limit_absolute_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle absolute limit price input"""
+        try:
+            if not context.user_data.get('waiting_for_limit_absolute'):
+                logger.info("Not waiting for absolute input")
+                return
+            
+            user_input = update.message.text.strip()
+            trigger_price = context.user_data.get('trigger_price', 0)
+            parent_order = context.user_data.get('parent_order', {})
+            side = parent_order.get('side', '').lower()
+            
+            logger.info(f"Processing absolute input: {user_input}")
+            
+            try:
+                limit_price = float(user_input)
+                if limit_price <= 0:
+                    await update.message.reply_text("❌ Limit price must be greater than 0")
+                    return
+            except ValueError:
+                await update.message.reply_text("❌ Please enter a valid number")
+                return
+            
+            # Validate but don't block (just warn)
+            if side == 'buy' and limit_price > trigger_price:
+                await update.message.reply_text(
+                    f"⚠️ Note: Limit ${limit_price:.4f} > Trigger ${trigger_price:.4f}\n"
+                    f"This may affect execution for long positions. Continuing..."
+                )
+            elif side == 'sell' and limit_price < trigger_price:
+                await update.message.reply_text(
+                    f"⚠️ Note: Limit ${limit_price:.4f} < Trigger ${trigger_price:.4f}\n"
+                    f"This may affect execution for short positions. Continuing..."
+                )
+            
+            context.user_data['limit_price'] = limit_price
+            context.user_data['waiting_for_limit_absolute'] = False
+            
+            logger.info(f"Using absolute limit price: ${limit_price:.4f}")
+            
+            await self._execute_stoploss_order(update, context)
+                
+        except Exception as e:
+            logger.error(f"Error in handle_limit_absolute_input: {e}", exc_info=True)
+            await update.message.reply_text("❌ An error occurred processing limit price.")
     
     async def _ask_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
                               trigger_price: float, entry_price: float, side: str):
