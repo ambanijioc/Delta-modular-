@@ -369,24 +369,25 @@ Choose a position to add stop-loss protection:
             # Get product_id with multiple fallbacks
             product_id = product.get('id') or position.get('product_id')
             
-            # Enhanced symbol extraction
-            symbol = self._extract_symbol_from_position(position)
+            # Use enhanced symbol from product data
+            symbol = product.get('symbol', 'Unknown')
+            display_symbol = self._format_symbol_for_display(symbol)
             
             # Determine current position side for exit order calculation
             current_side = 'buy' if size > 0 else 'sell'
             
             order_data = {
-                'id': product_id or f"pos_{symbol}",
+                'id': product_id or f"pos_{display_symbol}",
                 'product_id': product_id,
-                'symbol': symbol,
-                'side': current_side,  # Current position side
-                'size': abs(size),     # Absolute size
-                'price': entry_price,  # Entry price for calculations
+                'symbol': display_symbol,  # Use formatted symbol
+                'side': current_side,      # Current position side
+                'size': abs(size),         # Absolute size
+                'price': entry_price,      # Entry price for calculations
                 'status': 'filled',
-                'position_size': size  # Store original size for reference
+                'position_size': size      # Store original size for reference
             }
             
-            logger.info(f"Converted position: {symbol}, Size: {size}, Side: {current_side}")
+            logger.info(f"Converted position: {display_symbol}, Size: {size}, Side: {current_side}")
             
             return order_data
             
