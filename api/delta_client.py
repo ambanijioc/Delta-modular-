@@ -240,35 +240,26 @@ class DeltaClient:
             return {"success": False, "error": str(e)}
     
     def _enhance_position_data(self, position: dict) -> dict:
-        """Enhance position data with product details"""
+        """Enhanced position data extraction with better symbol detection"""
         try:
-            # Get product details if missing
+            # Get product details if missing or incomplete
             product = position.get('product', {})
             product_id = product.get('id') or position.get('product_id')
             
-            if not product.get('symbol') and product_id:
-                # Fetch product details
-                product_details = self.get_product_by_id(product_id)
-                if product_details.get('success'):
-                    product = product_details['result']
-                    position['product'] = product
+            # If we don't have a proper symbol, try to fetch product details
+            current_symbol = product.get('symbol', '')
             
-            # Ensure we have basic data
-            if not product.get('symbol'):
-                # Try to construct symbol from available data
-                underlying = product.get('underlying_asset', {}).get('symbol', 'BTC')
-                contract_type = product.get('contract_type', 'unknown')
-                strike = product.get('strike_price', '')
-                expiry = product.get('expiry_date', '')
-                
-                if strike and expiry:
-                    # Format: BTC-C-50000-28DEC24
-                    symbol_type = 'C' if 'call' in contract_type.lower() else 'P' if 'put' in contract_type.lower() else 'F'
-                    product['symbol'] = f"{underlying}-{symbol_type}-{strike}-{expiry}"
-                else:
-                    product['symbol'] = f"{underlying}-{contract_type.upper()}"
-                
-                position['product'] = product
+            if not current_symbol or current_symbol == 'Unknown' or not self._is_valid_symbol(current_symbol):
+                if product_id:
+                    # Try to fetch full product details from API
+                    logger.info(f"Fetching product details for ID: {product_id}")
+                    product_response = self.get_product_by_id(product_id)
+                    
+                    if product_response.get('success'):
+                        full_product = product_response['result']
+                        # Update the position with full product data
+                        position['product'] = full_product
+                        logger.info(f"Enhanced product data: {full_product.get('symbol', 'Still Unknown')}")
             
             # Ensure numeric fields are properly formatted
             position['size'] = float(position.get('size', 0))
@@ -281,6 +272,79 @@ class DeltaClient:
         except Exception as e:
             logger.error(f"❌ Error enhancing position data: {e}")
             return position
+    
+    def _is_valid_symbol(self, symbol: str) -> bool:
+        """Check if symbol contains meaningful information"""
+        if not symbol or symbol == 'Unknown':
+            return False
+        # Valid symbols should have more specific format
+        valid_patterns = ['BTC-', 'ETH-', '-CE-', '-PE-', '-C-', '-P-']
+        return any(pattern in symbol for pattern in valid_patterns)
+    
+    def get_positions_with_product_details(self) -> Dict:
+        """Get positions with full product details via separate API calls"""
+        try:
+            logger.info("📊 Fetching positions with enhanced product details...")
+            
+            # Get basic positions first
+            positions_response = self._make_request('GET', '/positions', {'underlying_asset_symbol': 'BTC'})
+            
+            if not positions_response.get('success'):
+                logger.warning("Direct positions call failed, trying alternative...")
+                positions_response = self._make_request('GET', '/positions')
+            
+            if not positions_response.get('success'):
+                return {"success": False, "error": "Failed to fetch positions"}
+            
+            positions = positions_response.get('result', [])
+            enhanced_positions = []
+            
+            # Enhance each position with full product data
+            for position in positions:
+                if float(position.get('size', 0)) == 0:
+                    continue  # Skip zero positions
+                
+                product = position.get('product', {})
+                product_id = product.get('id') or position.get('product_id')
+                
+                if product_id:
+                    # Get full product details
+                    try:
+                        product_response = self.get_product_by_id(product_id)
+                        if product_response.get('success'):
+                            full_product_data = product_response['result']
+                            position['product'] = full_product_data
+                            logger.info(f"Enhanced position with symbol: {full_product_data.get('symbol', 'Unknown')}")
+                    except Exception as e:
+                        logger.warning(f"Failed to get product details for {product_id}: {e}")
+                
+                enhanced_positions.append(position)
+            
+            logger.info(f"✅ Enhanced {len(enhanced_positions)} positions")
+            return {"success": True, "result": enhanced_positions}
+            
+        except Exception as e:
+            logger.error(f"❌ Error in get_positions_with_product_details: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def get_positions(self) -> Dict:
+        """Main positions method with enhanced product detail fetching"""
+        logger.info("📊 Fetching positions with full product information...")
+        
+        # Try enhanced method first
+        try:
+            enhanced_response = self.get_positions_with_product_details()
+            if enhanced_response.get('success'):
+                positions = enhanced_response.get('result', [])
+                if positions:
+                    logger.info(f"✅ Successfully got {len(positions)} positions with product details")
+                    return enhanced_response
+        except Exception as e:
+            logger.warning(f"⚠️ Enhanced positions failed: {e}")
+        
+        # Fallback to existing methods
+        logger.info("🔄 Falling back to existing position methods...")
+        return self.get_positions_by_underlying('BTC')
     
     def get_product_by_id(self, product_id: int) -> Dict:
         """Get product details by product ID"""
