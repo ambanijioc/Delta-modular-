@@ -762,6 +762,70 @@ async def test_force_enhance_command(update: Update, context: ContextTypes.DEFAU
     except Exception as e:
         await update.message.reply_text(f"❌ Test failed: {e}")    
 
+async def check_permissions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check API key permissions"""
+    try:
+        logger.info(f"Check permissions from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Checking API permissions...")
+        
+        # Test different API endpoints to check permissions
+        tests = [
+            ("Read Data", delta_client.get_positions_by_underlying, 'BTC'),
+            ("Read Products", delta_client.get_products, None),
+            ("Read Orders", delta_client.get_stop_orders, None)
+        ]
+        
+        results = []
+        
+        for test_name, method, param in tests:
+            try:
+                if param:
+                    result = method(param)
+                else:
+                    result = method()
+                
+                if result.get('success'):
+                    results.append(f"✅ {test_name}: Working")
+                else:
+                    error = result.get('error', 'Unknown')
+                    results.append(f"❌ {test_name}: {error}")
+            except Exception as e:
+                results.append(f"❌ {test_name}: Exception - {e}")
+        
+        # Test a simple order placement (with invalid data to avoid actual execution)
+        try:
+            test_order = delta_client._make_request('POST', '/orders/stop', 
+                payload=json.dumps({"product_id": 999999, "size": 1, "side": "buy", "stop_price": "1"}))
+            
+            if 'permission' in str(test_order.get('error', '')).lower():
+                results.append("❌ Trading Permission: Not granted")
+            elif 'invalid' in str(test_order.get('error', '')).lower() or 'not found' in str(test_order.get('error', '')).lower():
+                results.append("✅ Trading Permission: Granted (invalid test data rejected as expected)")
+            else:
+                results.append(f"⚠️ Trading Permission: Unknown - {test_order.get('error', 'No error')}")
+        except Exception as e:
+            results.append(f"❌ Trading Permission: Exception - {e}")
+        
+        message = f"""<b>🔐 API Key Permissions Check</b>
+
+{chr(10).join(results)}
+
+<b>Required Permissions for Stop Orders:</b>
+• ✅ Read Data - View positions & products
+• ✅ Trading - Place & cancel orders
+
+<b>Note:</b> If Trading permission is missing, enable it in your Delta Exchange API settings.
+"""
+        
+        await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in check_permissions_command: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Permission check failed: {e}")
+
+# Add to initialize_bot function
+
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enhanced callback handler with stop-loss support"""
     try:
@@ -1028,6 +1092,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("debugproducts", debug_products_command))
         application.add_handler(CommandHandler("debugrawpos", debug_raw_positions_command))
         application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
+        application.add_handler(CommandHandler("checkperms", check_permissions_command))
         application.add_handler(CommandHandler("debugmatch", debug_matching_command))
         application.add_handler(CallbackQueryHandler(callback_handler))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
