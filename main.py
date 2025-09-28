@@ -916,7 +916,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Enhanced message handler with stop-loss inputs"""
+    """Enhanced message handler with all stop-loss input types"""
     try:
         logger.info(f"Text message from user {update.effective_user.id}: {update.message.text}")
         
@@ -926,9 +926,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif context.user_data.get('waiting_for_trigger_price'):
             logger.info("Processing trigger price input")
             await stoploss_handler.handle_trigger_price_input(update, context)
-        elif context.user_data.get('waiting_for_limit_price'):
-            logger.info("Processing limit price input")
-            await stoploss_handler.handle_limit_price_input(update, context)
+        elif context.user_data.get('waiting_for_limit_percentage'):
+            logger.info("Processing limit percentage input")
+            await stoploss_handler.handle_limit_percentage_input(update, context)
+        elif context.user_data.get('waiting_for_limit_absolute'):
+            logger.info("Processing limit absolute input")
+            await stoploss_handler.handle_limit_absolute_input(update, context)
         elif context.user_data.get('waiting_for_trail_amount'):
             logger.info("Processing trail amount input")
             await stoploss_handler.handle_trail_amount_input(update, context)
