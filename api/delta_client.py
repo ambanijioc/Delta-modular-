@@ -239,6 +239,62 @@ class DeltaClient:
             logger.error(f"❌ Alternative position fetch failed: {e}")
             return {"success": False, "error": str(e)}
     
+    def force_enhance_positions(self) -> Dict:
+        """Force-fetch complete product data for positions"""
+        try:
+            logger.info("🔄 Force-fetching complete product data for positions...")
+            
+            # Get all BTC products first
+            all_products = self.get_products('call_options,put_options,futures')
+            if not all_products.get('success'):
+                logger.error("Failed to fetch products for enhancement")
+                return {"success": False, "error": "Failed to fetch products"}
+            
+            # Get basic positions
+            positions = self._make_request('GET', '/positions')
+            if not positions.get('success'):
+                logger.error("Failed to fetch basic positions")
+                return {"success": False, "error": "Failed to fetch positions"}
+            
+            products_list = all_products['result']
+            positions_list = positions['result']
+            
+            logger.info(f"Got {len(products_list)} products and {len(positions_list)} positions")
+            
+            # Create product lookup by ID
+            product_map = {p['id']: p for p in products_list if p.get('id')}
+            logger.info(f"Created product map with {len(product_map)} entries")
+            
+            # Match positions with full product data
+            enhanced_positions = []
+            for pos in positions_list:
+                position_size = float(pos.get('size', 0))
+                if position_size == 0:
+                    continue  # Skip zero positions
+                
+                product_id = pos.get('product_id') or pos.get('product', {}).get('id')
+                logger.info(f"Processing position with product_id: {product_id}, size: {position_size}")
+                
+                if product_id and product_id in product_map:
+                    full_product = product_map[product_id]
+                    pos['product'] = full_product
+                    symbol = full_product.get('symbol', 'Unknown')
+                    logger.info(f"✅ Matched position to product: {symbol}")
+                else:
+                    logger.warning(f"⚠️ No product match found for position with product_id: {product_id}")
+                
+                enhanced_positions.append(pos)
+            
+            logger.info(f"✅ Enhanced {len(enhanced_positions)} positions")
+            return {"success": True, "result": enhanced_positions}
+            
+        except Exception as e:
+            logger.error(f"❌ Force enhance failed: {e}")
+            return {"success": False, "error": str(e)}
+    
+    # ... rest of your existing methods ...
+    
+    
     def _enhance_position_data(self, position: dict) -> dict:
         """Enhanced position data extraction with better symbol detection"""
         try:
