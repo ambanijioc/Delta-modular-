@@ -268,36 +268,49 @@ Choose input method:
         await query.edit_message_text("❌ An error occurred. Please try again.")
     
     async def _ask_percentage_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Ask for percentage-based limit price"""
+    """Ask for percentage-based limit price - with debug logging"""
+    try:
         query = update.callback_query
         trigger_price = context.user_data.get('trigger_price', 0)
         parent_order = context.user_data.get('parent_order', {})
         side = parent_order.get('side', '').lower()
         
+        logger.info(f"=== PERCENTAGE LIMIT PRICE DEBUG ===")
+        logger.info(f"Trigger price: {trigger_price}")
+        logger.info(f"Parent order side: {side}")
+        logger.info(f"Setting waiting_for_limit_percentage = True")
+        
         # Determine appropriate percentage range based on position side
         if side == 'buy':  # Long position - selling to exit
-            suggestion = "Enter 3-8% for reasonable buffer below trigger price"
-            example = "5% means limit = trigger × (1 - 0.05)"
+            suggestion = "3-8% below trigger (e.g., 5 for 5% below)"
+            example = f"5% → ${trigger_price * 0.95:.4f}"
         else:  # Short position - buying to exit
-            suggestion = "Enter 3-8% for reasonable buffer above trigger price"
-            example = "5% means limit = trigger × (1 + 0.05)"
+            suggestion = "3-8% above trigger (e.g., 5 for 5% above)"  
+            example = f"5% → ${trigger_price * 1.05:.4f}"
         
         message = f"""
 <b>📊 Enter Limit Price as Percentage</b>
 
 <b>Trigger Price:</b> ${trigger_price:,.4f}
+<b>Your Position:</b> {side.upper()} (need to {('sell' if side == 'buy' else 'buy')} to exit)
 
-<b>How it works:</b>
-{example}
-
+<b>Example:</b> {example}
 <b>Recommended:</b> {suggestion}
 
-<b>Enter percentage (without % symbol):</b>
+<b>Enter just the number (without % symbol):</b>
 Example: 5 (for 5% buffer)
         """.strip()
         
         context.user_data['waiting_for_limit_percentage'] = True
+        logger.info(f"User data after setting flag: {list(context.user_data.keys())}")
+        
         await query.edit_message_text(message, parse_mode=ParseMode.HTML)
+        logger.info("Message sent successfully")
+        logger.info("=== END PERCENTAGE LIMIT PRICE DEBUG ===")
+        
+    except Exception as e:
+        logger.error(f"Error in _ask_percentage_limit_price: {e}", exc_info=True)
+        await query.edit_message_text("❌ An error occurred asking for percentage.")
     
     async def _ask_absolute_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Ask for absolute limit price"""
