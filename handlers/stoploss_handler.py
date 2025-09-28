@@ -618,3 +618,122 @@ Type your trail amount:
         
         for key in keys_to_clear:
             context.user_data.pop(key, None)
+            
+    async def handle_trigger_price_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle trigger price input from user"""
+        try:
+            logger.info("Handling trigger price input")
+            
+            if not context.user_data.get('waiting_for_trigger_price'):
+                logger.warning("Not waiting for trigger price")
+                return
+            
+            user_input = update.message.text.strip()
+            parent_order = context.user_data.get('parent_order', {})
+            entry_price = float(parent_order.get('price', 0))
+            side = parent_order.get('side', '').lower()
+            stoploss_type = context.user_data.get('stoploss_type')
+            
+            logger.info(f"Processing input: {user_input}, entry_price: {entry_price}, side: {side}")
+            
+            # Validate and parse trigger price
+            is_valid, trigger_price, error_msg = self._parse_price_input(user_input, entry_price, side)
+            
+            if not is_valid:
+                await update.message.reply_text(f"❌ {error_msg}")
+                return
+            
+            context.user_data['trigger_price'] = trigger_price
+            context.user_data['waiting_for_trigger_price'] = False
+            
+            logger.info(f"Parsed trigger price: {trigger_price}")
+            
+            # For stop limit, ask about limit price
+            if stoploss_type == "stop_limit":
+                await self._ask_limit_price(update, context, trigger_price, entry_price, side)
+            else:
+                # For stop market, execute immediately
+                await self._execute_stoploss_order(update, context)
+                
+        except Exception as e:
+            logger.error(f"Error in handle_trigger_price_input: {e}", exc_info=True)
+            await update.message.reply_text("❌ An error occurred processing trigger price.")
+    
+    def _parse_price_input(self, user_input: str, entry_price: float, side: str) -> tuple:
+        """Parse user input for trigger price"""
+        try:
+            user_input = user_input.strip()
+            
+            logger.info(f"Parsing price input: '{user_input}', entry: {entry_price}, side: {side}")
+            
+            if user_input.endswith('%'):
+                # Percentage input
+                percentage = float(user_input[:-1])
+                if percentage <= 0 or percentage >= 100:
+                    return False, 0, "Percentage must be between 0% and 100%"
+                
+                # Calculate trigger price based on side and percentage loss
+                if side == 'buy':  # Long position, stop when price falls
+                    trigger_price = entry_price * (1 - percentage / 100)
+                else:  # Short position, stop when price rises
+                    trigger_price = entry_price * (1 + percentage / 100)
+                
+                logger.info(f"Calculated percentage trigger: {trigger_price}")
+                return True, trigger_price, ""
+            
+            else:
+                # Direct price input
+                trigger_price = float(user_input)
+                if trigger_price <= 0:
+                    return False, 0, "Price must be greater than 0"
+                
+                logger.info(f"Direct price trigger: {trigger_price}")
+                return True, trigger_price, ""
+                
+        except ValueError as e:
+            logger.error(f"ValueError parsing price: {e}")
+            return False, 0, "Please enter a valid number or percentage (e.g., 25% or 15)"
+    
+    async def _execute_stoploss_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Execute the stop-loss order"""
+        try:
+            parent_order = context.user_data.get('parent_order', {})
+            stoploss_type = context.user_data.get('stoploss_type')
+            trigger_price = context.user_data.get('trigger_price')
+            limit_price = context.user_data.get('limit_price')
+            
+            logger.info(f"Executing stop-loss: type={stoploss_type}, trigger={trigger_price}")
+            
+            product_id = parent_order.get('product_id')
+            size = abs(int(parent_order.get('size', 0)))  # Absolute size for exit
+            side = 'sell' if parent_order.get('side') == 'buy' else 'buy'  # Opposite side
+            
+            loading_msg = await update.message.reply_text("🔄 Placing stop-loss order...")
+            
+            # For now, simulate the order (since we don't have real trading enabled)
+            # In real implementation, use the Delta API
+            
+            message = f"""<b>🛡️ Stop-Loss Order Simulated</b>
+
+✅ <b>Order Details:</b>
+• Symbol: {parent_order.get('symbol')}
+• Type: {stoploss_type.replace('_', ' ').title()}
+• Side: {side.title()}
+• Size: {size} contracts
+• Trigger Price: ${trigger_price:,.4f}
+"""
+            
+            if stoploss_type == "stop_limit" and limit_price:
+                message += f"• Limit Price: ${limit_price:,.4f}\n"
+            
+            message += f"\n<b>⚠️ Note:</b> This is a simulation. Real order placement requires additional API setup."
+            
+            await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
+            
+            # Clear user data
+            self._clear_stoploss_data(context)
+            
+        except Exception as e:
+            logger.error(f"Error in _execute_stoploss_order: {e}", exc_info=True)
+            await update.message.reply_text("❌ Failed to process stop-loss order.")
+                         
