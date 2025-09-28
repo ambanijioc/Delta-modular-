@@ -122,6 +122,94 @@ def format_position_summary(position: Dict) -> str:
     
     return f"{symbol} {side} ({pnl_emoji}${pnl:,.2f})"
 
+def format_enhanced_positions_message(positions: List[Dict]) -> str:
+    """Enhanced format positions with proper symbols from force enhancement"""
+    message = "<b>📊 Open Positions</b>\n\n"
+    
+    if not positions:
+        return "<b>📊 No Open Positions</b>\n\nYou currently have no active positions."
+    
+    for i, position in enumerate(positions[:10], 1):  # Limit to 10 positions
+        # Get enhanced product data (should be populated by force_enhance_positions)
+        product = position.get('product', {})
+        
+        # Use the actual symbol from enhanced data
+        symbol = product.get('symbol', 'Unknown')
+        
+        # Format the symbol for better display
+        display_symbol = format_option_symbol_for_display(symbol)
+        
+        # Position details
+        size = float(position.get('size', 0))
+        entry_price = float(position.get('entry_price', 0))
+        mark_price = float(position.get('mark_price', 0))
+        pnl = float(position.get('unrealized_pnl', 0))
+        
+        # Determine position type and emoji
+        if size > 0:
+            side = "LONG"
+            side_emoji = "📈"
+        elif size < 0:
+            side = "SHORT"
+            side_emoji = "📉"
+        else:
+            continue  # Skip zero positions
+        
+        # PnL formatting
+        pnl_emoji = "🟢" if pnl >= 0 else "🔴"
+        pnl_text = f"{pnl_emoji} ${pnl:,.2f}"
+        
+        # Price formatting
+        entry_text = f"${entry_price:,.4f}" if entry_price > 0 else "N/A"
+        mark_text = f"${mark_price:,.4f}" if mark_price > 0 else "N/A"
+        
+        message += f"<b>{i}. {display_symbol}</b> {side_emoji}\n"
+        message += f"   Side: {side}\n"
+        message += f"   Size: {abs(size):,.0f} contracts\n"
+        message += f"   Entry: {entry_text}\n"
+        message += f"   Mark: {mark_text}\n"
+        message += f"   PnL: {pnl_text}\n"
+        
+        message += "\n"
+    
+    return message
+
+def format_option_symbol_for_display(symbol: str) -> str:
+    """Format option symbol for better readability"""
+    if not symbol or symbol == 'Unknown':
+        return 'Unknown Position'
+    
+    # Handle Delta Exchange format: C-BTC-112000-290925
+    if '-' in symbol:
+        parts = symbol.split('-')
+        if len(parts) >= 4:
+            option_type = parts[0]  # C or P
+            underlying = parts[1]   # BTC
+            strike = parts[2]       # 112000
+            expiry = parts[3]       # 290925
+            
+            # Convert option type
+            if option_type == 'C':
+                option_name = 'CE'
+            elif option_type == 'P':
+                option_name = 'PE'
+            else:
+                option_name = option_type
+            
+            # Format expiry date if needed
+            if len(expiry) == 6:  # DDMMYY format
+                day = expiry[:2]
+                month = expiry[2:4] 
+                year = expiry[4:6]
+                formatted_expiry = f"{day}/{month}/{year}"
+            else:
+                formatted_expiry = expiry
+            
+            return f"{underlying} {strike} {option_name}"
+    
+    # Return original symbol if not in expected format
+    return symbol
+
 def format_position_message(position: Dict) -> str:
     """Format single position message"""
     symbol = position.get('product', {}).get('symbol', 'Unknown')
