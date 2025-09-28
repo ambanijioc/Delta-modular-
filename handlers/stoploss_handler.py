@@ -316,47 +316,6 @@ Type your limit price:
         context.user_data['waiting_for_limit_absolute'] = True
         await query.edit_message_text(message, parse_mode=ParseMode.HTML)
     
-    async def handle_limit_absolute_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle absolute limit price input"""
-        try:
-            if not context.user_data.get('waiting_for_limit_absolute'):
-                return
-            
-            user_input = update.message.text.strip()
-            trigger_price = context.user_data.get('trigger_price', 0)
-            parent_order = context.user_data.get('parent_order', {})
-            side = parent_order.get('side', '').lower()
-            
-            try:
-                limit_price = float(user_input)
-                if limit_price <= 0:
-                    await update.message.reply_text("❌ Limit price must be greater than 0")
-                    return
-            except ValueError:
-                await update.message.reply_text("❌ Please enter a valid number")
-                return
-            
-            # Validate limit price logic
-            if side == 'buy' and limit_price > trigger_price:
-                await update.message.reply_text(
-                    "⚠️ Warning: For long positions, limit price is typically ≤ trigger price.\n"
-                    "Continue anyway? This may affect execution."
-                )
-            elif side == 'sell' and limit_price < trigger_price:
-                await update.message.reply_text(
-                    "⚠️ Warning: For short positions, limit price is typically ≥ trigger price.\n"
-                    "Continue anyway? This may affect execution."
-                )
-            
-            context.user_data['limit_price'] = limit_price
-            context.user_data['waiting_for_limit_absolute'] = False
-            
-            await self._execute_stoploss_order(update, context)
-                
-        except Exception as e:
-            logger.error(f"Error in handle_limit_absolute_input: {e}", exc_info=True)
-            await update.message.reply_text("❌ An error occurred processing limit price.")
-    
     def _get_current_market_price(self, product_id: int) -> float:
         """Get current market price for validation"""
         try:
