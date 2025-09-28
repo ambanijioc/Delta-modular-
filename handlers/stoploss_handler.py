@@ -168,7 +168,7 @@ Example: {suggested_price:.2f}
 <b>Calculated Limit:</b> ${limit_price:,.4f}
 
 Proceeding with stop-loss order...
-        """.strip()
+            """.strip()
         
             await update.message.reply_text(confirmation, parse_mode=ParseMode.HTML)
             await self._execute_stoploss_order(update, context)
