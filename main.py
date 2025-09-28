@@ -150,6 +150,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == "test_simple":
             await query.edit_message_text("✅ Simple callback works!")
             return
+
+        if data == "show_positions":
+            logger.info("🎯 Processing show positions")
+            await show_positions_callback(update, context)
+            return
         
         # Handle stop-loss specific callbacks FIRST
         if data == "sl_limit_percentage":
