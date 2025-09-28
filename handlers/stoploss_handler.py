@@ -180,19 +180,23 @@ Proceeding with stop-loss order...
             await update.message.reply_text("❌ An error occurred processing percentage.")
     
     async def handle_limit_absolute_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle absolute limit price input"""
+        """Handle absolute limit price input - KEEP THIS ONE"""
         try:
+            logger.info(f"=== ABSOLUTE INPUT DEBUG ===")
+            logger.info(f"waiting_for_limit_absolute: {context.user_data.get('waiting_for_limit_absolute')}")
+            logger.info(f"User data keys: {list(context.user_data.keys())}")
+     
             if not context.user_data.get('waiting_for_limit_absolute'):
-                logger.info("Not waiting for absolute input")
+                logger.info("❌ Not waiting for absolute input - exiting")
                 return
-            
+        
             user_input = update.message.text.strip()
             trigger_price = context.user_data.get('trigger_price', 0)
             parent_order = context.user_data.get('parent_order', {})
             side = parent_order.get('side', '').lower()
-            
-            logger.info(f"Processing absolute input: {user_input}")
-            
+        
+            logger.info(f"Processing absolute input: '{user_input}'")
+        
             try:
                 limit_price = float(user_input)
                 if limit_price <= 0:
@@ -201,26 +205,28 @@ Proceeding with stop-loss order...
             except ValueError:
                 await update.message.reply_text("❌ Please enter a valid number")
                 return
-            
-            # Validate but don't block (just warn)
-            if side == 'buy' and limit_price > trigger_price:
-                await update.message.reply_text(
-                    f"⚠️ Note: Limit ${limit_price:.4f} > Trigger ${trigger_price:.4f}\n"
-                    f"This may affect execution for long positions. Continuing..."
-                )
-            elif side == 'sell' and limit_price < trigger_price:
-                await update.message.reply_text(
-                    f"⚠️ Note: Limit ${limit_price:.4f} < Trigger ${trigger_price:.4f}\n"
-                    f"This may affect execution for short positions. Continuing..."
-                )
-            
+        
+        # Store the absolute price
             context.user_data['limit_price'] = limit_price
             context.user_data['waiting_for_limit_absolute'] = False
-            
-            logger.info(f"Using absolute limit price: ${limit_price:.4f}")
-            
+        
+            logger.info(f"✅ Set absolute limit price: ${limit_price:.4f}")
+        
+        # Show confirmation and execute
+            confirmation = f"""
+<b>✅ Limit Price Set</b>
+
+<b>Trigger Price:</b> ${trigger_price:,.4f}
+<b>Limit Price:</b> ${limit_price:,.4f}
+
+Proceeding with stop-loss order...
+            """.strip()
+        
+            await update.message.reply_text(confirmation, parse_mode=ParseMode.HTML)
             await self._execute_stoploss_order(update, context)
-                
+        
+            logger.info("=== END ABSOLUTE INPUT DEBUG ===")
+            
         except Exception as e:
             logger.error(f"Error in handle_limit_absolute_input: {e}", exc_info=True)
             await update.message.reply_text("❌ An error occurred processing limit price.")
