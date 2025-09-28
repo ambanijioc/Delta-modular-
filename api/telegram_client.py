@@ -27,10 +27,15 @@ class TelegramClient:
         ]
         return InlineKeyboardMarkup(keyboard)
     
-    def create_main_menu_keyboard(self) -> InlineKeyboardMarkup:
-        """Create main menu keyboard"""
+    def create_main_menu_keyboard(self):
+        """Create the main menu keyboard with all options"""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    
         keyboard = [
-            [InlineKeyboardButton("Select Expiry", callback_data="select_expiry")],
-            [InlineKeyboardButton("Show Positions", callback_data="show_positions")]
+            [InlineKeyboardButton("📅 Select Expiry", callback_data="select_expiry")],
+            [InlineKeyboardButton("📊 Show Positions", callback_data="show_positions")],
+            [InlineKeyboardButton("💰 Portfolio Summary", callback_data="portfolio_summary")],
+            [InlineKeyboardButton("🛡️ Add Stop-Loss", callback_data="add_stoploss_menu")]
         ]
+    
         return InlineKeyboardMarkup(keyboard)
