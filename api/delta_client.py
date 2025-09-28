@@ -176,7 +176,7 @@ class DeltaClient:
         params = {'product_id': product_id}
         return self._make_request('GET', '/positions/margined', params)
     
-        def get_positions_enhanced(self) -> Dict:
+    def get_positions_enhanced(self) -> Dict:
         """Enhanced positions fetching with product details"""
         logger.info("📊 Fetching enhanced positions with product details...")
         
