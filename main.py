@@ -941,6 +941,60 @@ async def test_correct_stop_command(update: Update, context: ContextTypes.DEFAUL
 
 # Add to initialize_bot function
 
+async def test_orders_api_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test orders API directly"""
+    try:
+        logger.info(f"Testing orders API from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Testing orders API...")
+        
+        # Test 1: Basic orders call
+        logger.info("🧪 Test 1: Basic /orders call")
+        test1 = delta_client._make_request('GET', '/orders', {})
+        logger.info(f"Test 1 result: {test1}")
+        
+        # Test 2: Orders with state filter
+        logger.info("🧪 Test 2: Orders with state filter")
+        test2 = delta_client._make_request('GET', '/orders', {'states': 'open'})
+        logger.info(f"Test 2 result: {test2}")
+        
+        # Test 3: Orders with BTC filter
+        logger.info("🧪 Test 3: Orders with underlying filter")
+        test3 = delta_client._make_request('GET', '/orders', {'underlying_asset_symbol': 'BTC'})
+        logger.info(f"Test 3 result: {test3}")
+        
+        # Format results
+        results = []
+        for i, (name, result) in enumerate([
+            ("Basic /orders", test1),
+            ("With state filter", test2), 
+            ("With BTC filter", test3)
+        ], 1):
+            if result.get('success'):
+                count = len(result.get('result', []))
+                results.append(f"✅ Test {i} ({name}): {count} orders")
+            else:
+                error = result.get('error', 'Unknown')
+                results.append(f"❌ Test {i} ({name}): {error}")
+        
+        message = f"<b>🧪 Orders API Test Results</b>\n\n" + "\n".join(results)
+        
+        # Show first order structure if any test succeeded
+        for test_name, result in [("Basic", test1), ("State", test2), ("BTC", test3)]:
+            if result.get('success') and result.get('result'):
+                first_order = result['result'][0]
+                message += f"\n\n<b>Sample Order Structure ({test_name}):</b>\n"
+                message += f"<code>{list(first_order.keys())}</code>"
+                break
+        
+        await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in test_orders_api_command: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Test failed: {e}")
+
+# Add to initialize_bot function
+
 async def test_callback_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Test callback handling directly"""
     try:
@@ -1267,6 +1321,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("debugproducts", debug_products_command))
         application.add_handler(CommandHandler("debugrawpos", debug_raw_positions_command))
         application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
+        application.add_handler(CommandHandler("testorders", test_orders_api_command))
         application.add_handler(CommandHandler("checkperms", check_permissions_command))
         application.add_handler(CommandHandler("testcorrect", test_correct_stop_command))
         application.add_handler(CommandHandler("simpletest", simple_test_command))
