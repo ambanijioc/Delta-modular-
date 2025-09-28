@@ -795,53 +795,46 @@ def cancel_all_stop_orders(self, product_id: int = None) -> Dict:
         return self._make_request('GET', f'/orders/{order_id}')
 
     def get_stop_orders(self, product_id: int = None) -> Dict:
-        """Get stop orders - fixed method"""
+        """Get stop orders - corrected method"""
         try:
             logger.info("🔍 Fetching stop orders...")
         
-        # Try different approaches to get orders
-            approaches = [
-            # Approach 1: Get all orders and filter for stop orders
-                {'endpoint': '/orders', 'params': {'states': 'open,pending'}},
-            
-            # Approach 2: Get orders with product filter if provided
-                {'endpoint': '/orders', 'params': {'states': 'open'} if not product_id else {'states': 'open', 'product_id': product_id}},
-            
-            # Approach 3: Simple orders call
-                {'endpoint': '/orders', 'params': {}}
-            ]
+        # Use the working approach from the test
+            params = {'states': 'open,pending'}
+            if product_id:
+                params['product_id'] = product_id
         
-            for i, approach in enumerate(approaches, 1):
-                try:
-                    logger.info(f"🔄 Trying approach {i}: {approach['endpoint']} with params {approach['params']}")
-                    response = self._make_request('GET', approach['endpoint'], approach['params'])
-                
-                    if response.get('success'):
-                        orders = response.get('result', [])
-                        logger.info(f"✅ Approach {i} successful: {len(orders)} orders found")
-                    
-                    # Filter for stop orders if we got all orders
-                        stop_orders = []
-                        for order in orders:
-                            if order.get('stop_order_type') == 'stop_loss_order' or order.get('stop_price'):
-                                stop_orders.append(order)
-                    
-                        logger.info(f"📊 Filtered to {len(stop_orders)} stop orders")
-                    
-                        return {"success": True, "result": stop_orders}
-                    else:
-                        logger.warning(f"⚠️ Approach {i} failed: {response.get('error')}")
-                    
-                except Exception as e:
-                    logger.warning(f"⚠️ Approach {i} exception: {e}")
-                    continue
+            logger.info(f"📤 Making request to /orders with params: {params}")
+            response = self._make_request('GET', '/orders', params)
         
-        # If all approaches fail
-            logger.error("❌ All approaches to fetch orders failed")
-            return {"success": False, "error": "All order fetching methods failed"}
+            logger.info(f"📥 Raw response: {response}")
+        
+            if not response.get('success'):
+                logger.error(f"❌ API call failed: {response.get('error')}")
+                return response
+        
+            all_orders = response.get('result', [])
+            logger.info(f"📊 Total orders received: {len(all_orders)}")
+        
+        # Filter for stop orders (look for stop_order_type or stop_price)
+            stop_orders = []
+            for order in all_orders:
+            # Check if it's a stop order by multiple criteria
+                has_stop_type = order.get('stop_order_type') == 'stop_loss_order'
+                has_stop_price = order.get('stop_price') is not None
+            
+                logger.info(f"🔍 Order {order.get('id')}: stop_type={has_stop_type}, stop_price={has_stop_price}")
+            
+                if has_stop_type or has_stop_price:
+                    stop_orders.append(order)
+                    logger.info(f"✅ Added stop order: {order.get('id')}")
+        
+            logger.info(f"📊 Filtered to {len(stop_orders)} stop orders")
+        
+            return {"success": True, "result": stop_orders}
         
         except Exception as e:
-            logger.error(f"❌ Error in get_stop_orders: {e}")
+            logger.error(f"❌ Exception in get_stop_orders: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def cancel_stop_order(self, order_id: str) -> Dict:
