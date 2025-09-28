@@ -269,20 +269,58 @@ async def simple_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("Simple test:", reply_markup=reply_markup)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command"""
+    """Enhanced start command with proper position display"""
     try:
         logger.info(f"Start command from user: {update.effective_user.id}")
-        context.user_data.clear()
         
-        reply_markup = telegram_client.create_main_menu_keyboard()
-        await update.message.reply_text(
-            START_MESSAGE,
-            parse_mode=ParseMode.HTML,
-            reply_markup=reply_markup
-        )
+        # Use enhanced positions method
+        positions = delta_client.force_enhance_positions()
+        portfolio = delta_client.get_portfolio_summary()
+        
+        if not positions.get('success'):
+            error_msg = positions.get('error', 'Unknown error')
+            if 'bad_schema' in str(error_msg):
+                error_text = "❌ API schema error. Check API permissions."
+            else:
+                error_text = f"❌ {error_msg}"
+            
+            await update.message.reply_text(error_text)
+            return
+        
+        positions_data = positions.get('result', [])
+        
+        if not positions_data:
+            message = "📊 <b>No Open Positions Found</b>\n\n"
+            
+            if portfolio.get('success'):
+                balances = portfolio.get('result', [])
+                if balances:
+                    message += "<b>💰 Wallet Balances:</b>\n"
+                    for balance in balances[:5]:
+                        asset = balance.get('asset_symbol', 'Unknown')
+                        available = balance.get('available_balance', 0)
+                        if float(available) > 0:
+                            message += f"• {asset}: {available}\n"
+                    message += "\n"
+            
+            message += "<i>Start trading by selecting an expiry date!</i>"
+            await update.message.reply_text(message, parse_mode=ParseMode.HTML)
+            return
+        
+        # Use enhanced message formatting with real prices
+        message = format_enhanced_positions_with_live_data(positions_data)
+        
+        if portfolio.get('success'):
+            balances = portfolio.get('result', [])
+            total_balance = sum(float(b.get('available_balance', 0)) for b in balances)
+            if total_balance > 0:
+                message += f"\n<b>💰 Total Portfolio Value:</b> ₹{total_balance:,.2f}"
+        
+        await update.message.reply_text(message, parse_mode=ParseMode.HTML)
+        
     except Exception as e:
         logger.error(f"Error in start_command: {e}", exc_info=True)
-        await update.message.reply_text("❌ Failed to start bot. Please try again.")
+        await update.message.reply_text("❌ Failed to fetch positions. Use /debug for more info.")
 
 async def debug_order_details_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show raw order details for debugging"""
