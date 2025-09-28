@@ -480,27 +480,27 @@ async def debug_products_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text(f"❌ Debug failed: {e}")
 
 async def debug_raw_positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Debug: Show raw position API response"""
+    """Debug: Show raw position API response with required parameters"""
     try:
-        await update.message.reply_text("🔄 Fetching raw positions...")
+        await update.message.reply_text("🔄 Fetching raw positions with BTC filter...")
         
-        # Direct API call to positions
-        positions = delta_client._make_request('GET', '/positions')
+        # Direct API call with required parameter
+        positions = delta_client._make_request('GET', '/positions', {'underlying_asset_symbol': 'BTC'})
         
         if not positions.get('success'):
-            await update.message.reply_text(f"❌ API call failed: {positions.get('error')}")
+            await update.message.reply_text(f"❌ BTC positions failed: {positions.get('error')}")
             return
         
         positions_list = positions.get('result', [])
         
         if not positions_list:
-            await update.message.reply_text("📊 No positions in raw API response")
+            await update.message.reply_text("📊 No BTC positions found")
             return
         
         # Show raw data for first position
         pos = positions_list[0]
         
-        message = f"<b>🔍 Raw Position Data</b>\n\n"
+        message = f"<b>🔍 Raw BTC Position Data</b>\n\n"
         message += f"<b>Position Keys:</b>\n{', '.join(pos.keys())}\n\n"
         message += f"<b>Size:</b> {pos.get('size')}\n"
         message += f"<b>Product ID:</b> {pos.get('product_id')}\n"
@@ -521,20 +521,20 @@ async def debug_raw_positions_command(update: Update, context: ContextTypes.DEFA
         await update.message.reply_text(f"❌ Debug failed: {e}")
 
 async def debug_matching_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Debug: Test the product matching process"""
+    """Debug: Test the product matching process with fixed API calls"""
     try:
         await update.message.reply_text("🔄 Testing product matching...")
         
-        # Get products and positions separately
+        # Get products and positions with proper parameters
         products_response = delta_client.get_products('call_options,put_options,futures')
-        positions_response = delta_client._make_request('GET', '/positions')
+        positions_response = delta_client._make_request('GET', '/positions', {'underlying_asset_symbol': 'BTC'})
         
         if not products_response.get('success'):
             await update.message.reply_text(f"❌ Products failed: {products_response.get('error')}")
             return
             
         if not positions_response.get('success'):
-            await update.message.reply_text(f"❌ Positions failed: {positions_response.get('error')}")
+            await update.message.reply_text(f"❌ BTC positions failed: {positions_response.get('error')}")
             return
         
         products_list = products_response.get('result', [])
@@ -545,7 +545,7 @@ async def debug_matching_command(update: Update, context: ContextTypes.DEFAULT_T
         
         message = f"<b>🔍 Matching Debug</b>\n\n"
         message += f"Products found: {len(products_list)}\n"
-        message += f"Total positions: {len(positions_list)}\n"
+        message += f"Total BTC positions: {len(positions_list)}\n"
         message += f"Active positions: {len(active_positions)}\n\n"
         
         if active_positions:
@@ -569,12 +569,47 @@ async def debug_matching_command(update: Update, context: ContextTypes.DEFAULT_T
             else:
                 message += f"<b>❌ No Match Found</b>\n"
                 message += f"Looking for product ID: {pos_product_id}\n"
-                message += f"Available product IDs: {[p.get('id') for p in products_list[:5]]}\n"
+                
+                # Show some example product IDs for comparison
+                example_ids = [p.get('id') for p in products_list if 'C-BTC-112' in p.get('symbol', '')][:3]
+                message += f"Similar product IDs: {example_ids}\n"
         
         await update.message.reply_text(message, parse_mode=ParseMode.HTML)
         
     except Exception as e:
-        await update.message.reply_text(f"❌ Matching debug failed: {e}")    
+        await update.message.reply_text(f"❌ Matching debug failed: {e}")
+
+async def test_force_enhance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test the complete force enhance process"""
+    try:
+        await update.message.reply_text("🔄 Testing complete force enhancement...")
+        
+        result = delta_client.force_enhance_positions()
+        
+        if result.get('success'):
+            positions = result.get('result', [])
+            
+            if positions:
+                pos = positions[0]
+                product = pos.get('product', {})
+                symbol = product.get('symbol', 'Unknown')
+                size = pos.get('size')
+                
+                message = f"<b>✅ Force Enhancement Success!</b>\n\n"
+                message += f"<b>Enhanced Symbol:</b> {symbol}\n"
+                message += f"<b>Size:</b> {size}\n"
+                message += f"<b>Product ID:</b> {product.get('id')}\n"
+                message += f"<b>Contract Type:</b> {product.get('contract_type')}\n"
+                message += f"<b>Strike:</b> {product.get('strike_price')}\n"
+                
+                await update.message.reply_text(message, parse_mode=ParseMode.HTML)
+            else:
+                await update.message.reply_text("✅ Enhancement worked but no positions found")
+        else:
+            await update.message.reply_text(f"❌ Enhancement failed: {result.get('error')}")
+            
+    except Exception as e:
+        await update.message.reply_text(f"❌ Test failed: {e}")    
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enhanced callback handler with stop-loss support"""
@@ -832,6 +867,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("portfolio", portfolio_command))
         application.add_handler(CommandHandler("rawpos", raw_positions_command))
         application.add_handler(CommandHandler("stoploss", stoploss_command))
+        application.add_handler(CommandHandler("testforce", test_force_enhance_command))
         application.add_handler(CommandHandler("debugproducts", debug_products_command))
         application.add_handler(CommandHandler("debugrawpos", debug_raw_positions_command))
         application.add_handler(CommandHandler("debugmatch", debug_matching_command))
