@@ -736,4 +736,220 @@ Type your trail amount:
         except Exception as e:
             logger.error(f"Error in _execute_stoploss_order: {e}", exc_info=True)
             await update.message.reply_text("❌ Failed to process stop-loss order.")
-                         
+
+    async def _ask_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                              trigger_price: float, entry_price: float, side: str):
+        """Ask user about limit price for stop limit orders"""
+        # Calculate suggested limit price (4% buffer)
+        if side == 'buy':  # Long position, selling to exit
+            suggested_limit = trigger_price * 0.96  # 4% below trigger
+        else:  # Short position, buying to exit
+            suggested_limit = trigger_price * 1.04  # 4% above trigger
+        
+        message = f"""
+<b>🎯 Set Limit Price</b>
+
+<b>Trigger Price:</b> ${trigger_price:,.4f}
+<b>Suggested Limit:</b> ${suggested_limit:,.4f} (4% buffer)
+
+<b>Limit Price Options:</b>
+• <b>Auto:</b> Use suggested price with 4% safety buffer
+• <b>Custom:</b> Enter your own limit price
+
+Delta Exchange auto-fills limit price, but you can customize it:
+        """.strip()
+        
+        reply_markup = self.create_limit_price_keyboard()
+        await update.message.reply_text(message, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+    
+    async def handle_limit_price_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle limit price selection"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            selection = query.data.replace("sl_limit_", "")
+            
+            if selection == "auto":
+                # Use automatic 4% buffer
+                trigger_price = context.user_data.get('trigger_price', 0)
+                parent_order = context.user_data.get('parent_order', {})
+                side = parent_order.get('side', '').lower()
+                
+                if side == 'buy':  # Long position
+                    limit_price = trigger_price * 0.96  # 4% below trigger
+                else:  # Short position
+                    limit_price = trigger_price * 1.04  # 4% above trigger
+                
+                context.user_data['limit_price'] = limit_price
+                await self._execute_stoploss_order(update, context)
+                
+            elif selection == "custom":
+                # Ask for custom limit price
+                await self._ask_custom_limit_price(update, context)
+            
+        except Exception as e:
+            logger.error(f"Error in handle_limit_price_selection: {e}", exc_info=True)
+            await query.edit_message_text("❌ An error occurred. Please try again.")
+    
+    async def _ask_custom_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Ask for custom limit price input"""
+        query = update.callback_query
+        trigger_price = context.user_data.get('trigger_price', 0)
+        
+        message = f"""
+<b>🎯 Enter Custom Limit Price</b>
+
+<b>Trigger Price:</b> ${trigger_price:,.4f}
+
+Enter your limit price as a number:
+Example: 18
+
+<b>Important:</b>
+• For long positions: Limit should be ≤ trigger price
+• For short positions: Limit should be ≥ trigger price
+
+Type your limit price:
+        """.strip()
+        
+        context.user_data['waiting_for_limit_price'] = True
+        await query.edit_message_text(message, parse_mode=ParseMode.HTML)
+    
+    async def handle_limit_price_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle custom limit price input"""
+        try:
+            if not context.user_data.get('waiting_for_limit_price'):
+                return
+            
+            user_input = update.message.text.strip()
+            trigger_price = context.user_data.get('trigger_price', 0)
+            parent_order = context.user_data.get('parent_order', {})
+            side = parent_order.get('side', '').lower()
+            
+            try:
+                limit_price = float(user_input)
+            except ValueError:
+                await update.message.reply_text("❌ Please enter a valid number for limit price.")
+                return
+            
+            # Validate limit price logic
+            if side == 'buy' and limit_price > trigger_price:  # Long position
+                await update.message.reply_text(
+                    "⚠️ For long positions, limit price should be ≤ trigger price.\n"
+                    "Otherwise, the order may not execute as intended."
+                )
+            elif side == 'sell' and limit_price < trigger_price:  # Short position  
+                await update.message.reply_text(
+                    "⚠️ For short positions, limit price should be ≥ trigger price.\n"
+                    "Otherwise, the order may not execute as intended."
+                )
+            
+            context.user_data['limit_price'] = limit_price
+            context.user_data['waiting_for_limit_price'] = False
+            
+            await self._execute_stoploss_order(update, context)
+                
+        except Exception as e:
+            logger.error(f"Error in handle_limit_price_input: {e}", exc_info=True)
+            await update.message.reply_text("❌ An error occurred processing limit price.")
+    
+    async def handle_trail_amount_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle trail amount input for trailing stops"""
+        try:
+            if not context.user_data.get('waiting_for_trail_amount'):
+                return
+            
+            user_input = update.message.text.strip()
+            parent_order = context.user_data.get('parent_order', {})
+            entry_price = float(parent_order.get('price', 0))
+            
+            # Parse trail amount
+            is_valid, trail_amount, error_msg = self._parse_trail_amount(user_input, entry_price)
+            
+            if not is_valid:
+                await update.message.reply_text(f"❌ {error_msg}")
+                return
+            
+            context.user_data['trail_amount'] = trail_amount
+            context.user_data['waiting_for_trail_amount'] = False
+            
+            # Execute trailing stop order
+            await self._execute_trailing_stop_order(update, context)
+                
+        except Exception as e:
+            logger.error(f"Error in handle_trail_amount_input: {e}", exc_info=True)
+            await update.message.reply_text("❌ An error occurred processing trail amount.")
+    
+    def _parse_trail_amount(self, user_input: str, entry_price: float) -> tuple:
+        """Parse user input for trail amount"""
+        try:
+            user_input = user_input.strip()
+            
+            if user_input.endswith('%'):
+                # Percentage input
+                percentage = float(user_input[:-1])
+                if percentage <= 0 or percentage >= 50:
+                    return False, 0, "Trail percentage must be between 0% and 50%"
+                
+                # Calculate trail amount as percentage of entry price
+                trail_amount = entry_price * (percentage / 100)
+                return True, trail_amount, ""
+            
+            else:
+                # Direct amount input
+                trail_amount = float(user_input)
+                if trail_amount <= 0:
+                    return False, 0, "Trail amount must be greater than 0"
+                
+                return True, trail_amount, ""
+                
+        except ValueError:
+            return False, 0, "Please enter a valid number or percentage (e.g., 10% or 5)"
+    
+    async def _execute_trailing_stop_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Execute trailing stop order"""
+        try:
+            parent_order = context.user_data.get('parent_order', {})
+            trail_amount = context.user_data.get('trail_amount')
+            
+            product_id = parent_order.get('product_id')
+            size = abs(int(parent_order.get('size', 0)))
+            side = 'sell' if parent_order.get('side') == 'buy' else 'buy'
+            
+            loading_msg = await update.message.reply_text("🔄 Placing trailing stop order...")
+            
+            # Simulate trailing stop order
+            message = f"""<b>📈 Trailing Stop Order Simulated</b>
+
+✅ <b>Order Details:</b>
+• Symbol: {parent_order.get('symbol')}
+• Side: {side.title()}
+• Size: {size} contracts
+• Trail Amount: ${trail_amount:,.4f}
+
+<b>⚠️ Note:</b> This is a simulation. Real order placement requires additional API setup.
+"""
+            
+            await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
+            
+            # Clear user data
+            self._clear_stoploss_data(context)
+            
+        except Exception as e:
+            logger.error(f"Error in _execute_trailing_stop_order: {e}", exc_info=True)
+            await update.message.reply_text("❌ Failed to place trailing stop order.")
+    
+    def _clear_stoploss_data(self, context: ContextTypes.DEFAULT_TYPE):
+        """Clear stop-loss related data from user context"""
+        keys_to_clear = [
+            'stoploss_order_id', 'parent_order', 'stoploss_type',
+            'trigger_price', 'limit_price', 'trail_amount',
+            'waiting_for_trigger_price', 'waiting_for_limit_price',
+            'waiting_for_trail_amount', 'available_positions'
+        ]
+        
+        for key in keys_to_clear:
+            context.user_data.pop(key, None)
+        
+        logger.info("Cleared stop-loss data from user context")
+            
