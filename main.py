@@ -217,6 +217,15 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Failed to send error message: {e}")
 
+async def simple_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Simple callback test"""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    
+    keyboard = [[InlineKeyboardButton("Test Button", callback_data="test_simple")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text("Simple test:", reply_markup=reply_markup)
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command"""
     try:
@@ -1246,6 +1255,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
         application.add_handler(CommandHandler("checkperms", check_permissions_command))
         application.add_handler(CommandHandler("testcorrect", test_correct_stop_command))
+        application.add_handler(CommandHandler("simpletest", simple_test_command))
         application.add_handler(CommandHandler("testcb", test_callback_command))
         application.add_handler(CommandHandler("debugmatch", debug_matching_command))
         application.add_handler(CallbackQueryHandler(callback_handler))
