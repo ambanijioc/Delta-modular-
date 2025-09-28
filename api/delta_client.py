@@ -243,38 +243,39 @@ class DeltaClient:
         """Force-fetch complete product data for positions"""
         try:
             logger.info("🔄 Force-fetching complete product data for positions...")
-            
+        
             # Get all BTC products first
             all_products = self.get_products('call_options,put_options,futures')
             if not all_products.get('success'):
                 logger.error("Failed to fetch products for enhancement")
                 return {"success": False, "error": "Failed to fetch products"}
-            
-            # Get basic positions
-            positions = self._make_request('GET', '/positions')
+        
+            # Get positions with required parameter
+            positions = self._make_request('GET', '/positions', {'underlying_asset_symbol': 'BTC'})
             if not positions.get('success'):
-                logger.error("Failed to fetch basic positions")
-                return {"success": False, "error": "Failed to fetch positions"}
-            
+                logger.error("Failed to fetch basic positions with BTC filter")
+                # Try alternative approach - get positions for each product
+                return self._get_positions_by_product_scan(all_products['result'])
+        
             products_list = all_products['result']
             positions_list = positions['result']
-            
+        
             logger.info(f"Got {len(products_list)} products and {len(positions_list)} positions")
-            
+        
             # Create product lookup by ID
             product_map = {p['id']: p for p in products_list if p.get('id')}
             logger.info(f"Created product map with {len(product_map)} entries")
-            
+        
             # Match positions with full product data
             enhanced_positions = []
             for pos in positions_list:
                 position_size = float(pos.get('size', 0))
                 if position_size == 0:
                     continue  # Skip zero positions
-                
+            
                 product_id = pos.get('product_id') or pos.get('product', {}).get('id')
                 logger.info(f"Processing position with product_id: {product_id}, size: {position_size}")
-                
+            
                 if product_id and product_id in product_map:
                     full_product = product_map[product_id]
                     pos['product'] = full_product
@@ -282,18 +283,53 @@ class DeltaClient:
                     logger.info(f"✅ Matched position to product: {symbol}")
                 else:
                     logger.warning(f"⚠️ No product match found for position with product_id: {product_id}")
-                
-                enhanced_positions.append(pos)
             
+                enhanced_positions.append(pos)
+        
             logger.info(f"✅ Enhanced {len(enhanced_positions)} positions")
             return {"success": True, "result": enhanced_positions}
-            
+        
         except Exception as e:
             logger.error(f"❌ Force enhance failed: {e}")
             return {"success": False, "error": str(e)}
-    
-    # ... rest of your existing methods ...
-    
+
+    def _get_positions_by_product_scan(self, products_list: List[Dict]) -> Dict:
+        """Alternative: Scan each product for positions"""
+        try:
+            logger.info("🔄 Scanning individual products for positions...")
+        
+            all_positions = []
+        
+            # Check positions for each BTC product (limit to prevent rate limiting)
+            btc_products = [p for p in products_list if 'BTC' in p.get('symbol', '')][:50]  # Limit to 50
+        
+            for product in btc_products:
+                product_id = product.get('id')
+                if not product_id:
+                    continue
+                
+                try:
+                    # Get positions for specific product
+                    pos_response = self._make_request('GET', '/positions', {'product_id': product_id})
+                
+                    if pos_response.get('success'):
+                        positions = pos_response.get('result', [])
+                        for pos in positions:
+                            if float(pos.get('size', 0)) != 0:  # Only non-zero positions
+                                pos['product'] = product  # Attach full product info
+                                all_positions.append(pos)
+                                logger.info(f"✅ Found position: {product.get('symbol')} - Size: {pos.get('size')}")
+                
+                except Exception as e:
+                    logger.warning(f"Failed to check product {product_id}: {e}")
+                    continue
+        
+            logger.info(f"✅ Product scan found {len(all_positions)} positions")
+            return {"success": True, "result": all_positions}
+        
+        except Exception as e:
+            logger.error(f"❌ Product scan failed: {e}")
+            return {"success": False, "error": str(e)}
     
     def _enhance_position_data(self, position: dict) -> dict:
         """Enhanced position data extraction with better symbol detection"""
