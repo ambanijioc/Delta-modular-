@@ -1026,42 +1026,6 @@ async def check_permissions_command(update: Update, context: ContextTypes.DEFAUL
 
 # Add to initialize_bot function
 
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Enhanced callback handler with stop-loss support"""
-    try:
-        logger.info(f"Callback query: {update.callback_query.data}")
-        query = update.callback_query
-        data = query.data
-        
-        if data == "select_expiry":
-            await expiry_handler.show_expiry_selection(update, context)
-        elif data.startswith("expiry_"):
-            await expiry_handler.handle_expiry_selection(update, context)
-        elif data.startswith("strategy_"):
-            await options_handler.handle_strategy_selection(update, context)
-        elif data == "show_positions":
-            await position_handler.show_positions(update, context)
-        elif data.startswith("add_stoploss_"):
-            order_id = data.replace("add_stoploss_", "")
-            await stoploss_handler.show_stoploss_selection(update, context, order_id)
-        elif data.startswith("sl_select_pos_"):  # New: Handle position selection
-            await stoploss_handler.handle_position_selection(update, context)
-        elif data.startswith("sl_type_"):
-            await stoploss_handler.handle_stoploss_type_selection(update, context)
-        elif data.startswith("sl_limit_"):
-            await stoploss_handler.handle_limit_price_selection(update, context)
-        elif data == "sl_cancel":
-            await query.edit_message_text("❌ Stop-loss setup cancelled.")
-        else:
-            await query.answer("Unknown option")
-            
-    except Exception as e:
-        logger.error(f"Error in callback_handler: {e}", exc_info=True)
-        try:
-            await update.callback_query.answer("❌ An error occurred")
-        except:
-            pass
-
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enhanced message handler with all stop-loss input types"""
     try:
