@@ -228,6 +228,55 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+async def back_to_main_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle back to main menu"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Get portfolio for balance
+        portfolio = delta_client.get_portfolio_summary()
+        
+        message_parts = []
+        
+        if portfolio.get('success'):
+            balances = portfolio.get('result', [])
+            total_balance = sum(float(b.get('available_balance', 0)) for b in balances)
+            if total_balance > 0:
+                message_parts.append(f"💰 <b>Portfolio Value:</b> ₹{total_balance:,.2f}")
+        
+        welcome_section = """<b>🚀 Welcome to Delta Options Bot!</b>
+
+<b>Available Actions:</b>
+• 📊 View your current positions
+• 📈 Start new options trading
+• 🛡️ Add stop-loss protection
+• 💰 Check portfolio summary
+
+Choose an action below:"""
+        
+        message_parts.append(welcome_section)
+        full_message = "\n\n".join(message_parts)
+        
+        # Create main menu keyboard
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        keyboard = [
+            [InlineKeyboardButton("📅 Select Expiry", callback_data="select_expiry")],
+            [InlineKeyboardButton("📊 Show Positions", callback_data="show_positions")],
+            [InlineKeyboardButton("🛡️ Add Stop-Loss", callback_data="add_stoploss_menu")],
+            [InlineKeyboardButton("💰 Portfolio Summary", callback_data="portfolio_summary")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            full_message,
+            parse_mode=ParseMode.HTML,
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in back_to_main_callback: {e}", exc_info=True)
+
 async def show_positions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle show positions button click"""
     try:
