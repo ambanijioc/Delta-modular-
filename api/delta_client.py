@@ -353,8 +353,8 @@ class DeltaClient:
 
     def get_stop_orders(self, product_id: int = None) -> Dict:
         """Get all stop orders"""
-    params = {}
-    if product_id:
+        params = {}
+            if product_id:
         params['product_id'] = product_id
     
     logger.info("📊 Fetching stop orders...")
