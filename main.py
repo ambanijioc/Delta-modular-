@@ -291,6 +291,28 @@ async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in positions_command: {e}", exc_info=True)
         await update.message.reply_text("❌ Failed to fetch positions. Use /debug for more info.")
 
+async def stoploss_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /stoploss command"""
+    try:
+        logger.info(f"Stop-loss command from user: {update.effective_user.id}")
+        
+        # Check if order ID is provided
+        if context.args:
+            order_id = context.args[0]
+            await stoploss_handler.show_stoploss_selection(update, context, order_id)
+        else:
+            await update.message.reply_text(
+                "📋 <b>Stop-Loss Command Usage:</b>\n\n"
+                "/stoploss [order_id] - Add stop-loss to specific order\n\n"
+                "<b>Example:</b> /stoploss 12345\n\n"
+                "Get order IDs from trade confirmations or /positions",
+                parse_mode=ParseMode.HTML
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in stoploss_command: {e}", exc_info=True)
+        await update.message.reply_text("❌ Failed to process stop-loss command.")
+
 async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show portfolio summary"""
     try:
