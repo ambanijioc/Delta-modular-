@@ -142,6 +142,26 @@ class DeltaClient:
             params['contract_types'] = contract_types
         return self._make_request('GET', '/products', params)
     
+    def get_live_market_data(product_id: int, delta_client=None) -> Dict:
+        """Get live market data for a product"""
+        try:
+            if not delta_client:
+                return None
+        
+            ticker_data = delta_client.get_live_ticker(product_id)
+            if ticker_data:
+                return {
+                    'mark_price': float(ticker_data.get('mark_price', 0)),
+                    'last_price': float(ticker_data.get('close', 0)),
+                    'bid': float(ticker_data.get('bid', 0)),
+                    'ask': float(ticker_data.get('ask', 0))
+                }
+            return None
+        
+        except Exception as e:
+            logger.error(f"Error getting live market data: {e}")
+            return None
+    
     def get_live_ticker(self, product_id: int) -> Dict:
         """Get live ticker data for a product"""
         try:
