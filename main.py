@@ -361,7 +361,7 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Failed to fetch portfolio data.")
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle callback queries"""
+    """Enhanced callback handler with stop-loss support"""
     try:
         logger.info(f"Callback query: {update.callback_query.data}")
         query = update.callback_query
@@ -375,6 +375,15 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await options_handler.handle_strategy_selection(update, context)
         elif data == "show_positions":
             await position_handler.show_positions(update, context)
+        elif data.startswith("add_stoploss_"):
+            order_id = data.replace("add_stoploss_", "")
+            await stoploss_handler.show_stoploss_selection(update, context, order_id)
+        elif data.startswith("sl_type_"):
+            await stoploss_handler.handle_stoploss_type_selection(update, context)
+        elif data.startswith("sl_limit_"):
+            await stoploss_handler.handle_limit_price_selection(update, context)
+        elif data == "sl_cancel":
+            await query.edit_message_text("❌ Stop-loss setup cancelled.")
         else:
             await query.answer("Unknown option")
             
@@ -386,12 +395,18 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text messages"""
+    """Enhanced message handler with stop-loss inputs"""
     try:
         logger.info(f"Text message from user {update.effective_user.id}: {update.message.text}")
         
         if context.user_data.get('waiting_for_lot_size'):
             await options_handler.handle_lot_size_input(update, context)
+        elif context.user_data.get('waiting_for_trigger_price'):
+            await stoploss_handler.handle_trigger_price_input(update, context)
+        elif context.user_data.get('waiting_for_limit_price'):
+            await stoploss_handler.handle_limit_price_input(update, context)
+        elif context.user_data.get('waiting_for_trail_amount'):
+            await stoploss_handler.handle_trail_amount_input(update, context)
         else:
             await update.message.reply_text(
                 "👋 Hi! Available commands:\n"
@@ -399,7 +414,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "/debug - System status\n"
                 "/webhook - Webhook status\n"
                 "/positions - View positions\n"
-                "/portfolio - Portfolio summary",
+                "/portfolio - Portfolio summary\n"
+                "/stoploss [order_id] - Add stop-loss protection",
                 reply_markup=telegram_client.create_main_menu_keyboard()
             )
             
