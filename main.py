@@ -138,13 +138,31 @@ position_handler = PositionHandler(delta_client)
 stoploss_handler = StopLossHandler(delta_client)
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Enhanced callback handler with all stop-loss callbacks"""
+    """Fixed callback handler with correct routing logic"""
     try:
         logger.info(f"Callback query: {update.callback_query.data}")
         query = update.callback_query
         data = query.data
         
-        if data == "select_expiry":
+        # Handle specific stop-loss callbacks first (before generic sl_limit_ check)
+        if data == "sl_limit_percentage":
+            logger.info("Routing to percentage limit handler")
+            await stoploss_handler.handle_limit_price_selection(update, context)
+        elif data == "sl_limit_absolute":
+            logger.info("Routing to absolute limit handler")
+            await stoploss_handler.handle_limit_price_selection(update, context)
+        elif data == "sl_cancel":
+            await query.edit_message_text("❌ Stop-loss setup cancelled.")
+        elif data.startswith("sl_select_pos_"):
+            await stoploss_handler.handle_position_selection(update, context)
+        elif data.startswith("sl_type_"):
+            await stoploss_handler.handle_stoploss_type_selection(update, context)
+        elif data.startswith("sl_limit_"):  # This should come AFTER the specific ones
+            logger.info("Routing to generic limit handler")
+            await stoploss_handler.handle_limit_price_selection(update, context)
+        
+        # Regular bot callbacks
+        elif data == "select_expiry":
             await expiry_handler.show_expiry_selection(update, context)
         elif data.startswith("expiry_"):
             await expiry_handler.handle_expiry_selection(update, context)
@@ -155,19 +173,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data.startswith("add_stoploss_"):
             order_id = data.replace("add_stoploss_", "")
             await stoploss_handler.show_stoploss_selection(update, context, order_id)
-        elif data.startswith("sl_select_pos_"):
-            await stoploss_handler.handle_position_selection(update, context)
-        elif data.startswith("sl_type_"):
-            await stoploss_handler.handle_stoploss_type_selection(update, context)
-        elif data == "sl_limit_percentage":  # Add this
-            await stoploss_handler.handle_limit_price_selection(update, context)
-        elif data == "sl_limit_absolute":    # Add this
-            await stoploss_handler.handle_limit_price_selection(update, context)
-        elif data.startswith("sl_limit_"):   # Keep this for other sl_limit_ callbacks
-            await stoploss_handler.handle_limit_price_selection(update, context)
-        elif data == "sl_cancel":
-            await query.edit_message_text("❌ Stop-loss setup cancelled.")
         else:
+            logger.warning(f"Unknown callback data: {data}")
             await query.answer("Unknown option")
             
     except Exception as e:
