@@ -1394,36 +1394,6 @@ Delta Exchange auto-fills limit price, but you can customize it:
         reply_markup = self.create_limit_price_keyboard()
         await update.message.reply_text(message, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
     
-    async def handle_limit_price_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle limit price selection"""
-        try:
-            query = update.callback_query
-            await query.answer()
-            
-            selection = query.data.replace("sl_limit_", "")
-            
-            if selection == "auto":
-                # Use automatic 4% buffer
-                trigger_price = context.user_data.get('trigger_price', 0)
-                parent_order = context.user_data.get('parent_order', {})
-                side = parent_order.get('side', '').lower()
-                
-                if side == 'buy':  # Long position
-                    limit_price = trigger_price * 0.96  # 4% below trigger
-                else:  # Short position
-                    limit_price = trigger_price * 1.04  # 4% above trigger
-                
-                context.user_data['limit_price'] = limit_price
-                await self._execute_stoploss_order(update, context)
-                
-            elif selection == "custom":
-                # Ask for custom limit price
-                await self._ask_custom_limit_price(update, context)
-            
-        except Exception as e:
-            logger.error(f"Error in handle_limit_price_selection: {e}", exc_info=True)
-            await query.edit_message_text("❌ An error occurred. Please try again.")
-    
     async def _ask_custom_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Ask for custom limit price input"""
         query = update.callback_query
