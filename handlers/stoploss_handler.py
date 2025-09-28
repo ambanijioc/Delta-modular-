@@ -695,7 +695,7 @@ Type your trail amount:
             logger.error(f"ValueError parsing price: {e}")
             return False, 0, "Please enter a valid number or percentage (e.g., 25% or 15)"
     
-        async def _execute_stoploss_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _execute_stoploss_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Execute real stop-loss order with Delta Exchange API"""
         try:
             parent_order = context.user_data.get('parent_order', {})
