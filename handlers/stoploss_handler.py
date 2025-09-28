@@ -238,35 +238,6 @@ Choose input method:
         reply_markup = self.create_limit_price_keyboard()
         await update.message.reply_text(message, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
     
-    async def handle_limit_price_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle limit price selection method - with debug logging"""
-        try:
-            query = update.callback_query
-            await query.answer()
-        
-            logger.info(f"=== LIMIT PRICE SELECTION DEBUG ===")
-            logger.info(f"Callback data received: '{query.data}'")
-            logger.info(f"User data keys: {list(context.user_data.keys())}")
-        
-            if query.data == "sl_limit_percentage":
-                logger.info("Processing percentage selection")
-                await self._ask_percentage_limit_price(update, context)
-            elif query.data == "sl_limit_absolute":
-                logger.info("Processing absolute selection")
-                await self._ask_absolute_limit_price(update, context)
-            elif query.data == "sl_cancel":
-                logger.info("Processing cancel")
-                await query.edit_message_text("❌ Stop-loss setup cancelled.")
-            else:
-                logger.error(f"Unhandled callback data in limit price selection: {query.data}")
-                await query.edit_message_text("❌ Invalid selection. Please try again.")
-        
-            logger.info("=== END LIMIT PRICE SELECTION DEBUG ===")
-        
-        except Exception as e:
-            logger.error(f"Error in handle_limit_price_selection: {e}", exc_info=True)
-            await query.edit_message_text("❌ An error occurred. Please try again.")
-    
     async def _ask_percentage_limit_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Ask for percentage-based limit price - with debug logging"""
         try:
