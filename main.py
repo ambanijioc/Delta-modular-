@@ -828,18 +828,18 @@ async def debug_matching_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text(f"❌ Matching debug failed: {e}")
 
 async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show active orders - enhanced version"""
+    """Show active orders - using simple method"""
     try:
         logger.info(f"Orders command from user: {update.effective_user.id}")
         
         loading_msg = await update.message.reply_text("🔄 Fetching active orders...")
         
-        # Get stop orders
-        stop_orders = delta_client.get_stop_orders()
+        # Use the simple method to avoid signature issues
+        stop_orders = delta_client.get_all_orders_simple()
         
         if not stop_orders.get('success'):
             error = stop_orders.get('error', 'Unknown error')
-            logger.error(f"❌ Stop orders failed: {error}")
+            logger.error(f"❌ Orders failed: {error}")
             await loading_msg.edit_text(f"❌ Failed to fetch orders: {error}")
             return
         
@@ -853,37 +853,26 @@ async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = "<b>📋 Active Stop Orders</b>\n\n"
         
         for i, order in enumerate(orders_data[:10], 1):
-            try:
-                # Extract order details with fallbacks
-                order_id = order.get('id', 'N/A')
-                product_symbol = order.get('product_symbol', 'Unknown')
-                side = order.get('side', 'Unknown')
-                size = order.get('size', 0)
-                stop_price = order.get('stop_price', 'N/A')
-                limit_price = order.get('limit_price', None)
-                status = order.get('state', 'Unknown')
-                order_type = order.get('order_type', 'Unknown')
-                stop_order_type = order.get('stop_order_type', 'N/A')
-                
-                logger.info(f"📋 Order {i}: ID={order_id}, Symbol={product_symbol}, Type={order_type}")
-                
-                message += f"<b>{i}. {product_symbol}</b>\n"
-                message += f"   ID: <code>{order_id}</code>\n"
-                message += f"   Type: {order_type.title()}\n"
-                message += f"   Stop Type: {stop_order_type}\n"
-                message += f"   Side: {side.title()}\n"
-                message += f"   Size: {size} contracts\n"
-                message += f"   Stop Price: ${stop_price}\n"
-                
-                if limit_price:
-                    message += f"   Limit Price: ${limit_price}\n"
-                
-                message += f"   Status: {status.title()}\n\n"
-                
-            except Exception as e:
-                logger.error(f"❌ Error processing order {i}: {e}")
-                message += f"<b>{i}. Error Processing Order</b>\n"
-                message += f"   ID: {order.get('id', 'N/A')}\n\n"
+            order_id = order.get('id', 'N/A')
+            product_symbol = order.get('product_symbol', 'Unknown')
+            side = order.get('side', 'Unknown')
+            size = order.get('size', 0)
+            stop_price = order.get('stop_price', 'N/A')
+            limit_price = order.get('limit_price')
+            status = order.get('state', 'Unknown')
+            order_type = order.get('order_type', 'Unknown')
+            
+            message += f"<b>{i}. {product_symbol}</b>\n"
+            message += f"   ID: <code>{order_id}</code>\n"
+            message += f"   Type: {order_type.title()}\n"
+            message += f"   Side: {side.title()}\n"
+            message += f"   Size: {size} contracts\n"
+            message += f"   Stop Price: ${stop_price}\n"
+            
+            if limit_price:
+                message += f"   Limit Price: ${limit_price}\n"
+            
+            message += f"   Status: {status.title()}\n\n"
         
         await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
         
