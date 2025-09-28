@@ -146,10 +146,10 @@ class StopLossHandler:
         return f"{base_symbol} Position"
     
     async def show_position_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Show selectable positions for stop-loss"""
+        """Show selectable positions for stop-loss using enhanced data"""
         try:
-            # Get open positions
-            positions = self.delta_client.get_positions()
+            # Use the enhanced positions method
+            positions = self.delta_client.force_enhance_positions()
             
             if not positions.get('success'):
                 await update.message.reply_text(
@@ -184,7 +184,13 @@ Choose a position to add stop-loss protection:
             
             # Add position details to message with enhanced display
             for i, position in enumerate(active_positions[:5], 1):  # Show first 5 in message
-                symbol = self._extract_symbol_from_position(position)
+                # Get enhanced symbol from product data
+                product = position.get('product', {})
+                symbol = product.get('symbol', 'Unknown')
+                
+                # Format symbol for display
+                display_symbol = self._format_symbol_for_display(symbol)
+                
                 size = float(position.get('size', 0))
                 entry_price = float(position.get('entry_price', 0))
                 pnl = float(position.get('unrealized_pnl', 0))
@@ -195,7 +201,7 @@ Choose a position to add stop-loss protection:
                 entry_text = f"${entry_price:,.4f}" if entry_price > 0 else "N/A"
                 
                 message += f"""
-{i}. <b>{symbol}</b> {side}
+{i}. <b>{display_symbol}</b> {side}
    Entry: {entry_text} | PnL: {pnl_emoji}${pnl:,.2f}"""
             
             if len(active_positions) > 5:
@@ -214,6 +220,71 @@ Choose a position to add stop-loss protection:
             logger.error(f"Error in show_position_selection: {e}", exc_info=True)
             await update.message.reply_text("❌ An error occurred fetching positions.")
     
+    def _format_symbol_for_display(self, symbol: str) -> str:
+        """Format symbol for display using the same logic as positions"""
+        if not symbol or symbol == 'Unknown':
+            return 'Unknown Position'
+        
+        # Handle Delta Exchange format: C-BTC-112000-290925
+        if '-' in symbol:
+            parts = symbol.split('-')
+            if len(parts) >= 4:
+                option_type = parts[0]  # C or P
+                underlying = parts[1]   # BTC
+                strike = parts[2]       # 112000
+                
+                # Convert option type
+                if option_type == 'C':
+                    option_name = 'CE'
+                elif option_type == 'P':
+                    option_name = 'PE'
+                else:
+                    option_name = option_type
+                
+                return f"{underlying} {strike} {option_name}"
+        
+        # Return original symbol if not in expected format
+        return symbol
+    
+    def create_positions_keyboard(self, positions_data: list) -> InlineKeyboardMarkup:
+        """Create keyboard for position selection with enhanced symbols"""
+        keyboard = []
+        
+        for i, position in enumerate(positions_data[:8]):  # Limit to 8 positions
+            # Use simple index-based identification
+            position_index = i
+            
+            # Get enhanced symbol
+            product = position.get('product', {})
+            symbol = product.get('symbol', 'Unknown')
+            display_symbol = self._format_symbol_for_display(symbol)
+            
+            size = float(position.get('size', 0))
+            pnl = float(position.get('unrealized_pnl', 0))
+            
+            # Determine position side and format
+            side = "LONG" if size > 0 else "SHORT"
+            pnl_emoji = "🟢" if pnl >= 0 else "🔴"
+            
+            # Create display text
+            display_text = f"{display_symbol} {side} ({pnl_emoji}${pnl:,.0f})"
+            
+            # Truncate if too long for button
+            if len(display_text) > 35:
+                display_text = display_text[:32] + "..."
+            
+            keyboard.append([
+                InlineKeyboardButton(
+                    display_text, 
+                    callback_data=f"sl_select_pos_{position_index}"
+                )
+            ])
+        
+        # Add cancel option
+        keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="sl_cancel")])
+        
+        return InlineKeyboardMarkup(keyboard)
+
     async def handle_position_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle position selection from inline keyboard with fixed matching"""
         try:
