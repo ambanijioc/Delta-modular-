@@ -24,28 +24,103 @@ def format_expiry_message(expiry_date: str, spot_price: float, atm_strike: float
     return message
 
 def format_positions_message(positions: List[Dict]) -> str:
-    """Format positions display message"""
+    """Enhanced format positions display message"""
     message = "<b>📊 Open Positions</b>\n\n"
     
     if not positions:
         return "<b>📊 No Open Positions</b>\n\nYou currently have no active positions."
     
     for i, position in enumerate(positions[:10], 1):  # Limit to 10 positions
-        symbol = position.get('product', {}).get('symbol', 'Unknown')
-        size = position.get('size', 0)
-        entry_price = position.get('entry_price', 0)
-        mark_price = position.get('mark_price', 0)
-        pnl = position.get('unrealized_pnl', 0)
+        # Enhanced symbol extraction
+        product = position.get('product', {})
+        symbol = product.get('symbol', 'Unknown')
         
-        pnl_emoji = "🟢" if float(pnl) >= 0 else "🔴"
+        # Try alternative symbol extraction if still unknown
+        if symbol == 'Unknown' or not symbol:
+            # Try to build symbol from components
+            underlying = product.get('underlying_asset', {})
+            if isinstance(underlying, dict):
+                base_symbol = underlying.get('symbol', 'BTC')
+            else:
+                base_symbol = 'BTC'
+            
+            contract_type = product.get('contract_type', '')
+            strike_price = product.get('strike_price', '')
+            
+            if contract_type and 'option' in contract_type:
+                option_type = 'CE' if 'call' in contract_type else 'PE'
+                if strike_price:
+                    symbol = f"{base_symbol} {strike_price} {option_type}"
+                else:
+                    symbol = f"{base_symbol} {option_type}"
+            else:
+                symbol = f"{base_symbol} Future"
         
-        message += f"<b>{i}. {symbol}</b>\n"
-        message += f"   Size: {size}\n"
-        message += f"   Entry: ${entry_price}\n"
-        message += f"   Mark: ${mark_price}\n"
-        message += f"   PnL: {pnl_emoji} ${pnl}\n\n"
+        # Position details
+        size = float(position.get('size', 0))
+        entry_price = float(position.get('entry_price', 0))
+        mark_price = float(position.get('mark_price', 0))
+        pnl = float(position.get('unrealized_pnl', 0))
+        
+        # Determine position type
+        if size > 0:
+            side = "LONG"
+            side_emoji = "📈"
+        elif size < 0:
+            side = "SHORT"
+            side_emoji = "📉"
+        else:
+            continue  # Skip zero positions
+        
+        # PnL formatting
+        pnl_emoji = "🟢" if pnl >= 0 else "🔴"
+        pnl_text = f"{pnl_emoji} ${pnl:,.2f}"
+        
+        # Price formatting
+        entry_text = f"${entry_price:,.4f}" if entry_price > 0 else "N/A"
+        mark_text = f"${mark_price:,.4f}" if mark_price > 0 else "N/A"
+        
+        message += f"<b>{i}. {symbol}</b> {side_emoji}\n"
+        message += f"   Side: {side}\n"
+        message += f"   Size: {abs(size):,.0f} contracts\n"
+        message += f"   Entry: {entry_text}\n"
+        message += f"   Mark: {mark_text}\n"
+        message += f"   PnL: {pnl_text}\n"
+        
+        # Add product ID for debugging if available
+        product_id = product.get('id')
+        if product_id:
+            message += f"   ID: {product_id}\n"
+        
+        message += "\n"
     
     return message
+
+def format_position_summary(position: Dict) -> str:
+    """Format single position for selection display"""
+    product = position.get('product', {})
+    symbol = product.get('symbol', 'Unknown')
+    
+    # Enhanced symbol extraction for display
+    if symbol == 'Unknown' or not symbol:
+        underlying = product.get('underlying_asset', {})
+        base_symbol = underlying.get('symbol', 'BTC') if isinstance(underlying, dict) else 'BTC'
+        contract_type = product.get('contract_type', '')
+        strike_price = product.get('strike_price', '')
+        
+        if contract_type and 'option' in contract_type:
+            option_type = 'CE' if 'call' in contract_type else 'PE'
+            symbol = f"{base_symbol} {strike_price} {option_type}" if strike_price else f"{base_symbol} {option_type}"
+        else:
+            symbol = f"{base_symbol} Future"
+    
+    size = float(position.get('size', 0))
+    pnl = float(position.get('unrealized_pnl', 0))
+    
+    side = "LONG" if size > 0 else "SHORT"
+    pnl_emoji = "🟢" if pnl >= 0 else "🔴"
+    
+    return f"{symbol} {side} ({pnl_emoji}${pnl:,.2f})"
 
 def format_position_message(position: Dict) -> str:
     """Format single position message"""
