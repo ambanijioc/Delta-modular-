@@ -224,7 +224,7 @@ class OptionsHandler:
         [InlineKeyboardButton("📊 View Details", callback_data=f"view_order_{order_id}")],
         [InlineKeyboardButton("❌ Close Position", callback_data=f"close_position_{order_id}")]
     ]
-    return InlineKeyboardMarkup(keyboard)
+        return InlineKeyboardMarkup(keyboard)
 
 def _format_trade_result(self, strategy: str, ce_result: dict, pe_result: dict, 
                        ce_option: dict, pe_option: dict, lot_size: int) -> str:
