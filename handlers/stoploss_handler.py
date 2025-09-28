@@ -1116,7 +1116,7 @@ Type your trail amount:
             return False, 0, "Please enter a valid number or percentage (e.g., 25% or 15)"
     
     async def _execute_stoploss_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Execute stop-loss order with price validation"""
+        """Execute stop-loss order - API gets absolute values only"""
         try:
             parent_order = context.user_data.get('parent_order', {})
             stoploss_type = context.user_data.get('stoploss_type')
@@ -1143,14 +1143,17 @@ Type your trail amount:
                 return
             
             loading_msg = await update.message.reply_text("🔄 Placing REAL stop-loss order...")
+
+            # Log the absolute values being sent to API
+            logger.info(f"Sending to API - Stop: ${trigger_price:.4f}, Limit: ${limit_price:.4f}")
             
-            # Place the actual stop-loss order
+            # Place the actual stop-loss order with absolute values
             if stoploss_type == "stop_market":
                 result = self.delta_client.place_stop_order(
                     product_id=product_id,
                     size=size,
                     side=side,
-                    stop_price=str(trigger_price),
+                    stop_price=str(trigger_price), # Always absolute value
                     order_type="market_order",
                     reduce_only=True
                 )
