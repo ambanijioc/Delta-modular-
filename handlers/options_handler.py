@@ -216,3 +216,28 @@ class OptionsHandler:
             logger.info("Trade data cleared from user context")
         except Exception as e:
             logger.warning(f"Error clearing trade data: {e}")
+
+    def create_position_actions_keyboard(self, order_id: str) -> InlineKeyboardMarkup:
+    """Create keyboard for position actions including stop-loss"""
+    keyboard = [
+        [InlineKeyboardButton("🛡️ Add Stop-Loss", callback_data=f"add_stoploss_{order_id}")],
+        [InlineKeyboardButton("📊 View Details", callback_data=f"view_order_{order_id}")],
+        [InlineKeyboardButton("❌ Close Position", callback_data=f"close_position_{order_id}")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def _format_trade_result(self, strategy: str, ce_result: dict, pe_result: dict, 
+                       ce_option: dict, pe_option: dict, lot_size: int) -> str:
+    """Enhanced trade result with stop-loss options"""
+    # ... existing code ...
+    
+    # Add stop-loss options for successful orders
+    if ce_success and pe_success:
+        ce_order_id = ce_result['result']['id']
+        pe_order_id = pe_result['result']['id']
+        
+        message += f"\n<b>🛡️ Risk Management:</b>\n"
+        message += f"Use /stoploss {ce_order_id} for CE protection\n"
+        message += f"Use /stoploss {pe_order_id} for PE protection\n"
+    
+    return message
