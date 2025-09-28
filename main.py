@@ -647,7 +647,7 @@ async def initialize_bot():
         # Add all handlers
         application.add_handler(CommandHandler("start", start_command))
         application.add_handler(CommandHandler("debug", debug_command))
-        application.add_handler(CommandHandler("debugpos", debug_positions_command
+        application.add_handler(CommandHandler("debugpos", debug_positions_command))
         application.add_handler(CommandHandler("webhook", webhook_command))
         application.add_handler(CommandHandler("positions", positions_command))
         application.add_handler(CommandHandler("portfolio", portfolio_command))
