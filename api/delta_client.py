@@ -32,81 +32,73 @@ class DeltaClient:
             raise
     
     def _make_request(self, method: str, endpoint: str, params: Dict = None, payload: str = '') -> Dict:
-        """Make authenticated request to Delta Exchange API"""
+        """Make authenticated request to Delta Exchange API - fixed signature"""
         try:
             timestamp = str(int(time.time()))
-            path = f"/v2{endpoint}"
-            url = f"{self.base_url}{path}"
-            
-            # Build query string for GET requests
-            query_string = ''
-            if params and method == 'GET':
-                query_string = '?' + '&'.join([f"{k}={v}" for k, v in params.items()])
-            
-            # Create signature string
-            signature_data = method + timestamp + path + query_string + payload
-            signature = self._generate_signature(self.api_secret, signature_data)
-            
-            headers = {
-                'api-key': self.api_key,
-                'timestamp': timestamp,
-                'signature': signature,
-                'User-Agent': 'BTC-Options-Bot/1.0',
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            }
-            
-            logger.info(f"🔗 Making {method} request to {endpoint}")
+        
+        # Handle parameters properly for signature
             if params:
-                logger.info(f"📋 Parameters: {params}")
-            
-            # Make the request
+            # URL encode parameters for the actual request
+                query_string = '&'.join([f"{k}={str(v)}" for k, v in params.items()])
+                full_endpoint = f"{endpoint}?{query_string}"
+            else:
+                full_endpoint = endpoint
+                query_string = ""
+        
+        # Create signature message - this is critical for GET with params
+            if method == 'GET' and query_string:
+                signature_message = f"{method}{timestamp}/v2{endpoint}?{query_string}"
+            else:
+                signature_message = f"{method}{timestamp}/v2{endpoint}{payload}"
+        
+            logger.info(f"🔐 Signature message: '{signature_message}'")
+        
+            signature = self._generate_signature(DELTA_API_SECRET, signature_message)
+        
+            headers = {
+                'api-key': DELTA_API_KEY,
+                'signature': signature,
+                'timestamp': timestamp,
+                'Content-Type': 'application/json'
+            }
+        
+        # Construct the full URL
+            if params:
+            # Use proper URL encoding
+                import urllib.parse
+                encoded_params = urllib.parse.urlencode(params, safe='%')
+                url = f"{DELTA_BASE_URL}/v2{endpoint}?{encoded_params}"
+            else:
+                url = f"{DELTA_BASE_URL}/v2{endpoint}"
+        
+            logger.info(f"🌐 Request URL: {url}")
+            logger.info(f"📤 Headers: {headers}")
+        
             if method == 'GET':
-                response = self.session.get(url, params=params, headers=headers, timeout=30)
+                response = requests.get(url, headers=headers, timeout=30)
             elif method == 'POST':
-                response = self.session.post(url, data=payload, headers=headers, timeout=30)
+                response = requests.post(url, headers=headers, data=payload, timeout=30)
+            elif method == 'DELETE':
+                response = requests.delete(url, headers=headers, timeout=30)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
+        
+            logger.info(f"📥 Response status: {response.status_code}")
+            logger.info(f"📥 Response text: {response.text[:500]}...")
+        
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"❌ HTTP {response.status_code}: {response.text}")
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}: {response.text}"
+                }
             
-            logger.info(f"📈 Response status: {response.status_code}")
-            
-            # Handle response
-            response.raise_for_status()
-            result = response.json()
-            
-            # Check if response indicates success
-            if isinstance(result, dict) and 'success' in result:
-                if not result.get('success'):
-                    logger.error(f"❌ API returned success=false: {result}")
-                    return result
-            
-            # For responses without success field, assume success if status is 200
-            if not isinstance(result, dict):
-                result = {'success': True, 'result': result}
-            elif 'success' not in result:
-                result = {'success': True, 'result': result}
-            
-            logger.info("✅ Request successful")
-            return result
-            
-        except requests.exceptions.Timeout as e:
-            logger.error(f"❌ Request timeout: {e}")
-            return {"success": False, "error": "Request timeout"}
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"❌ HTTP error {e.response.status_code}: {e}")
-            try:
-                error_detail = e.response.json()
-                logger.error(f"❌ Error details: {error_detail}")
-                return {"success": False, "error": error_detail}
-            except:
-                return {"success": False, "error": f"HTTP {e.response.status_code}"}
-        except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Request failed: {e}")
-            return {"success": False, "error": str(e)}
         except Exception as e:
-            logger.error(f"❌ Unexpected error: {e}", exc_info=True)
+            logger.error(f"❌ Request exception: {e}")
             return {"success": False, "error": str(e)}
-    
+
     def test_connection(self) -> Dict:
         """Test API connection"""
         logger.info("🧪 Testing Delta Exchange API connection...")
