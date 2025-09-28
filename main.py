@@ -581,6 +581,74 @@ async def debug_matching_command(update: Update, context: ContextTypes.DEFAULT_T
     except Exception as e:
         await update.message.reply_text(f"❌ Matching debug failed: {e}")
 
+async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show active stop orders"""
+    try:
+        logger.info(f"Orders command from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Fetching active orders...")
+        
+        # Get stop orders
+        stop_orders = delta_client.get_stop_orders()
+        
+        if not stop_orders.get('success'):
+            await loading_msg.edit_text(f"❌ Failed to fetch orders: {stop_orders.get('error')}")
+            return
+        
+        orders_data = stop_orders.get('result', [])
+        
+        if not orders_data:
+            await loading_msg.edit_text("📋 No active stop orders found.")
+            return
+        
+        message = "<b>📋 Active Stop Orders</b>\n\n"
+        
+        for i, order in enumerate(orders_data[:10], 1):
+            product = order.get('product', {})
+            symbol = product.get('symbol', 'Unknown')
+            order_id = order.get('id', 'N/A')
+            side = order.get('side', 'Unknown')
+            size = order.get('size', 0)
+            stop_price = order.get('stop_price', 'N/A')
+            status = order.get('state', 'Unknown')
+            
+            message += f"<b>{i}. {symbol}</b>\n"
+            message += f"   ID: <code>{order_id}</code>\n"
+            message += f"   Side: {side.title()}\n"
+            message += f"   Size: {size} contracts\n"
+            message += f"   Stop: ${stop_price}\n"
+            message += f"   Status: {status}\n\n"
+        
+        await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in orders_command: {e}", exc_info=True)
+        await update.message.reply_text("❌ Failed to fetch orders.")
+
+async def cancel_stops_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancel all stop orders"""
+    try:
+        logger.info(f"Cancel stops command from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Cancelling all stop orders...")
+        
+        result = delta_client.cancel_all_stop_orders()
+        
+        if result.get('success'):
+            cancelled_count = len(result.get('result', []))
+            message = f"✅ Successfully cancelled {cancelled_count} stop orders."
+        else:
+            error_msg = result.get('error', 'Unknown error')
+            message = f"❌ Failed to cancel orders: {error_msg}"
+        
+        await loading_msg.edit_text(message)
+        
+    except Exception as e:
+        logger.error(f"Error in cancel_stops_command: {e}", exc_info=True)
+        await update.message.reply_text("❌ Failed to cancel stop orders.")
+
+# Add these to initialize_bot function
+
 async def test_force_enhance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Test the complete force enhance process"""
     try:
