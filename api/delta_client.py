@@ -99,27 +99,27 @@ class DeltaClient:
             logger.error(f"❌ Request exception: {e}")
             return {"success": False, "error": str(e)}
 
-        def get_stop_orders(self, product_id: int = None) -> Dict:
-            """Get stop orders - simple method"""
-            try:
-                logger.info("🔍 Fetching stop orders...")
+    def get_stop_orders(self, product_id: int = None) -> Dict:
+        """Get stop orders - simple method"""
+        try:
+            logger.info("🔍 Fetching stop orders...")
             
             # Simple call without parameters
-                response = self._make_request('GET', '/orders')
+            response = self._make_request('GET', '/orders')
             
-                if not response.get('success'):
-                    logger.error(f"❌ Orders API failed: {response.get('error')}")
-                    return response
+            if not response.get('success'):
+                logger.error(f"❌ Orders API failed: {response.get('error')}")
+                return response
             
-                all_orders = response.get('result', [])
-                logger.info(f"📊 Retrieved {len(all_orders)} total orders")
+            all_orders = response.get('result', [])
+            logger.info(f"📊 Retrieved {len(all_orders)} total orders")
             
-                return {"success": True, "result": all_orders}
+            return {"success": True, "result": all_orders}
             
-            except Exception as e:
-                logger.error(f"❌ Exception in get_stop_orders: {e}")
-                return {"success": False, "error": str(e)}
-    
+        except Exception as e:
+            logger.error(f"❌ Exception in get_stop_orders: {e}")
+            return {"success": False, "error": str(e)}
+
     def test_connection(self) -> Dict:
         """Test API connection"""
         logger.info("🧪 Testing Delta Exchange API connection...")
