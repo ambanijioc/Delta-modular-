@@ -284,6 +284,52 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in start_command: {e}", exc_info=True)
         await update.message.reply_text("❌ Failed to start bot. Please try again.")
 
+async def debug_order_details_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show raw order details for debugging"""
+    try:
+        logger.info(f"Debug order details from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Fetching raw order details...")
+        
+        # Get all orders
+        response = delta_client._make_request('GET', '/orders', {'states': 'open,pending'})
+        
+        if not response.get('success'):
+            await loading_msg.edit_text(f"❌ Failed: {response.get('error')}")
+            return
+        
+        orders = response.get('result', [])
+        
+        if not orders:
+            await loading_msg.edit_text("📋 No orders found")
+            return
+        
+        # Show details of first order
+        first_order = orders[0]
+        
+        message = f"<b>🔍 Raw Order Details</b>\n\n"
+        message += f"<b>Order ID:</b> {first_order.get('id')}\n"
+        message += f"<b>Product Symbol:</b> {first_order.get('product_symbol')}\n"
+        message += f"<b>Order Type:</b> {first_order.get('order_type')}\n"
+        message += f"<b>Stop Order Type:</b> {first_order.get('stop_order_type')}\n"
+        message += f"<b>Side:</b> {first_order.get('side')}\n"
+        message += f"<b>Size:</b> {first_order.get('size')}\n"
+        message += f"<b>Stop Price:</b> {first_order.get('stop_price')}\n"
+        message += f"<b>Limit Price:</b> {first_order.get('limit_price')}\n"
+        message += f"<b>State:</b> {first_order.get('state')}\n"
+        message += f"<b>Reduce Only:</b> {first_order.get('reduce_only')}\n"
+        
+        # Show all keys for reference
+        message += f"\n<b>All Keys:</b>\n<code>{', '.join(first_order.keys())}</code>"
+        
+        await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in debug_order_details_command: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Debug failed: {e}")
+
+# Add to initialize_bot function
+
 async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Debug command to check system status"""
     try:
@@ -1335,6 +1381,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("debugrawpos", debug_raw_positions_command))
         application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
         application.add_handler(CommandHandler("testorders", test_orders_api_command))
+        application.add_handler(CommandHandler("debugorder", debug_order_details_command))
         application.add_handler(CommandHandler("checkperms", check_permissions_command))
         application.add_handler(CommandHandler("testcorrect", test_correct_stop_command))
         application.add_handler(CommandHandler("simpletest", simple_test_command))
