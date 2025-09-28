@@ -270,45 +270,29 @@ async def simple_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("Simple test:", reply_markup=reply_markup)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Enhanced start command with positions and main menu"""
+    """Clean start command - positions only shown when requested"""
     try:
         logger.info(f"Start command from user: {update.effective_user.id}")
         
-        # Get positions and portfolio data
-        positions = delta_client.force_enhance_positions()
+        # Get portfolio summary only (not positions)
         portfolio = delta_client.get_portfolio_summary()
         
-        # Build the complete message
+        # Build welcome message
         message_parts = []
         
-        # Add positions section
-        if positions.get('success'):
-            positions_data = positions.get('result', [])
-            
-            if positions_data:
-                # Format positions with enhanced display
-                positions_message = format_enhanced_positions_with_live_data(positions_data)
-                message_parts.append(positions_message)
-            else:
-                message_parts.append("📊 <b>No Open Positions</b>\n\nYou currently have no active positions.")
-        else:
-            error_msg = positions.get('error', 'Unknown error')
-            message_parts.append(f"⚠️ <b>Positions Status:</b> {error_msg}")
-        
-        # Add portfolio balance
+        # Add portfolio balance if available
         if portfolio.get('success'):
             balances = portfolio.get('result', [])
             total_balance = sum(float(b.get('available_balance', 0)) for b in balances)
             if total_balance > 0:
-                message_parts.append(f"💰 <b>Total Portfolio Value:</b> ₹{total_balance:,.2f}")
+                message_parts.append(f"💰 <b>Portfolio Value:</b> ₹{total_balance:,.2f}")
         
-        # Add welcome section and menu options
-        welcome_section = """
-<b>🚀 Welcome to Delta Options Bot!</b>
+        # Main welcome message
+        welcome_section = """<b>🚀 Welcome to Delta Options Bot!</b>
 
 <b>Available Actions:</b>
 • 📊 View your current positions
-• 📈 Start new options trading
+• 📈 Start new options trading  
 • 🛡️ Add stop-loss protection
 • 💰 Check portfolio summary
 
@@ -316,11 +300,20 @@ Choose an action below:"""
         
         message_parts.append(welcome_section)
         
-        # Combine all parts
+        # Combine message
         full_message = "\n\n".join(message_parts)
         
-        # Create the main menu keyboard
-        reply_markup = telegram_client.create_main_menu_keyboard()
+        # Create main menu keyboard
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        keyboard = [
+            [InlineKeyboardButton("📅 Select Expiry", callback_data="select_expiry")],
+            [InlineKeyboardButton("📊 Show Positions", callback_data="show_positions")],
+            [InlineKeyboardButton("🛡️ Add Stop-Loss", callback_data="add_stoploss_menu")],
+            [InlineKeyboardButton("💰 Portfolio Summary", callback_data="portfolio_summary")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
             full_message,
@@ -331,10 +324,9 @@ Choose an action below:"""
     except Exception as e:
         logger.error(f"Error in start_command: {e}", exc_info=True)
         await update.message.reply_text(
-            "❌ An error occurred. Bot is available for manual commands:\n"
-            "/positions - View positions\n"
-            "/stoploss - Add stop-loss\n"
-            "/portfolio - Portfolio summary"
+            "❌ An error occurred. Try manual commands:\n"
+            "/positions - View positions\n" 
+            "/stoploss - Add stop-loss"
         )
 
 async def debug_order_details_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
