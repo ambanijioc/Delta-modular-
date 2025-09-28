@@ -941,6 +941,8 @@ async def initialize_bot():
         application.add_handler(CommandHandler("portfolio", portfolio_command))
         application.add_handler(CommandHandler("rawpos", raw_positions_command))
         application.add_handler(CommandHandler("stoploss", stoploss_command))
+        application.add_handler(CommandHandler("orders", orders_command))
+        application.add_handler(CommandHandler("cancelstops", cancel_stops_command))
         application.add_handler(CommandHandler("testforce", test_force_enhance_command))
         application.add_handler(CommandHandler("debugproducts", debug_products_command))
         application.add_handler(CommandHandler("debugrawpos", debug_raw_positions_command))
