@@ -137,6 +137,46 @@ options_handler = OptionsHandler(delta_client)
 position_handler = PositionHandler(delta_client)
 stoploss_handler = StopLossHandler(delta_client)
 
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Enhanced callback handler with all stop-loss callbacks"""
+    try:
+        logger.info(f"Callback query: {update.callback_query.data}")
+        query = update.callback_query
+        data = query.data
+        
+        if data == "select_expiry":
+            await expiry_handler.show_expiry_selection(update, context)
+        elif data.startswith("expiry_"):
+            await expiry_handler.handle_expiry_selection(update, context)
+        elif data.startswith("strategy_"):
+            await options_handler.handle_strategy_selection(update, context)
+        elif data == "show_positions":
+            await position_handler.show_positions(update, context)
+        elif data.startswith("add_stoploss_"):
+            order_id = data.replace("add_stoploss_", "")
+            await stoploss_handler.show_stoploss_selection(update, context, order_id)
+        elif data.startswith("sl_select_pos_"):
+            await stoploss_handler.handle_position_selection(update, context)
+        elif data.startswith("sl_type_"):
+            await stoploss_handler.handle_stoploss_type_selection(update, context)
+        elif data == "sl_limit_percentage":  # Add this
+            await stoploss_handler.handle_limit_price_selection(update, context)
+        elif data == "sl_limit_absolute":    # Add this
+            await stoploss_handler.handle_limit_price_selection(update, context)
+        elif data.startswith("sl_limit_"):   # Keep this for other sl_limit_ callbacks
+            await stoploss_handler.handle_limit_price_selection(update, context)
+        elif data == "sl_cancel":
+            await query.edit_message_text("❌ Stop-loss setup cancelled.")
+        else:
+            await query.answer("Unknown option")
+            
+    except Exception as e:
+        logger.error(f"Error in callback_handler: {e}", exc_info=True)
+        try:
+            await update.callback_query.answer("❌ An error occurred")
+        except:
+            pass
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors"""
     logger.error(f"Update {update} caused error {context.error}", exc_info=context.error)
