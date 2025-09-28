@@ -931,22 +931,30 @@ Type your trail amount:
             return False, 0, "Please enter a valid number or percentage (e.g., 25% or 15)"
     
     async def _execute_stoploss_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Execute real stop-loss order with Delta Exchange API"""
+        """Execute stop-loss order with price validation"""
         try:
             parent_order = context.user_data.get('parent_order', {})
             stoploss_type = context.user_data.get('stoploss_type')
             trigger_price = context.user_data.get('trigger_price')
             limit_price = context.user_data.get('limit_price')
             
-            logger.info(f"Executing REAL stop-loss: type={stoploss_type}, trigger={trigger_price}")
-            
             product_id = parent_order.get('product_id')
-            size = abs(int(parent_order.get('size', 0)))  # Absolute size for exit
-            side = 'sell' if parent_order.get('side') == 'buy' else 'buy'  # Opposite side
+            size = abs(int(parent_order.get('size', 0)))
+            side = 'sell' if parent_order.get('side') == 'buy' else 'buy'
             symbol = parent_order.get('symbol', 'Unknown')
             
             if not product_id:
-                await update.message.reply_text("❌ Product ID not found. Cannot place real order.")
+                await update.message.reply_text("❌ Product ID not found. Cannot place order.")
+                return
+            
+            # Get current market price for validation
+            current_price = self._get_current_market_price(product_id)
+            
+            # Validate stop price to prevent immediate execution
+            is_valid, validation_msg = self._validate_stop_price(trigger_price, side, current_price)
+            
+            if not is_valid:
+                await update.message.reply_text(f"❌ {validation_msg}")
                 return
             
             loading_msg = await update.message.reply_text("🔄 Placing REAL stop-loss order...")
@@ -959,7 +967,7 @@ Type your trail amount:
                     side=side,
                     stop_price=str(trigger_price),
                     order_type="market_order",
-                    reduce_only=True  # Critical: Only reduces position
+                    reduce_only=True
                 )
             else:  # stop_limit
                 result = self.delta_client.place_stop_order(
@@ -969,7 +977,7 @@ Type your trail amount:
                     stop_price=str(trigger_price),
                     limit_price=str(limit_price),
                     order_type="limit_order",
-                    reduce_only=True  # Critical: Only reduces position
+                    reduce_only=True
                 )
             
             # Format and send result
@@ -984,7 +992,20 @@ Type your trail amount:
             
         except Exception as e:
             logger.error(f"Error in _execute_stoploss_order: {e}", exc_info=True)
-            await update.message.reply_text("❌ Failed to place REAL stop-loss order. Check logs for details.")
+            await update.message.reply_text("❌ Failed to place stop-loss order.")
+    
+    def _clear_stoploss_data(self, context: ContextTypes.DEFAULT_TYPE):
+        """Clear all stop-loss related data"""
+        keys_to_clear = [
+            'stoploss_order_id', 'parent_order', 'stoploss_type',
+            'trigger_price', 'limit_price', 'trail_amount',
+            'waiting_for_trigger_price', 'waiting_for_limit_percentage', 
+            'waiting_for_limit_absolute', 'waiting_for_trail_amount', 
+            'available_positions'
+        ]
+        
+        for key in keys_to_clear:
+            context.user_data.pop(key, None)
     
     async def _execute_trailing_stop_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Execute real trailing stop order"""
