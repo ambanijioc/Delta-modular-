@@ -167,6 +167,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_text("❌ Error processing percentage selection")
             return
         
+        # In your callback_handler function, add:
+        elif data == "back_to_main":
+            logger.info("🎯 Processing back to main menu")
+            await back_to_main_callback(update, context)
+            return
+        
         elif data == "sl_limit_absolute":
             logger.info("🎯 Processing absolute limit selection")
             try:
