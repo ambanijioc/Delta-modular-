@@ -31,29 +31,26 @@ class StopLossHandler:
         return InlineKeyboardMarkup(keyboard)
     
     def create_positions_keyboard(self, positions_data: list) -> InlineKeyboardMarkup:
-        """Create keyboard for position selection"""
+        """Enhanced keyboard for position selection"""
         keyboard = []
         
         for i, position in enumerate(positions_data[:8]):  # Limit to 8 positions
-            # Extract position details
-            symbol = position.get('product', {}).get('symbol', 'Unknown')
-            size = position.get('size', 0)
-            entry_price = position.get('entry_price', 0)
-            pnl = position.get('unrealized_pnl', 0)
+            # Enhanced position identification
+            product = position.get('product', {})
+            product_id = product.get('id') or position.get('product_id', f"pos_{i}")
             
-            # Create position identifier (use product_id if available, otherwise index)
-            position_id = position.get('product', {}).get('id', f"pos_{i}")
+            # Use helper function for consistent display
+            from utils.helpers import format_position_summary
+            display_text = format_position_summary(position)
             
-            # Format position display text
-            side = "LONG" if float(size) > 0 else "SHORT"
-            pnl_emoji = "🟢" if float(pnl) >= 0 else "🔴"
-            
-            display_text = f"{symbol} {side} ({pnl_emoji}${pnl})"
+            # Truncate if too long for button
+            if len(display_text) > 35:
+                display_text = display_text[:32] + "..."
             
             keyboard.append([
                 InlineKeyboardButton(
                     display_text, 
-                    callback_data=f"sl_select_pos_{position_id}"
+                    callback_data=f"sl_select_pos_{product_id}"
                 )
             ])
         
