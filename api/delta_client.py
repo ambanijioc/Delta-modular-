@@ -386,23 +386,32 @@ class DeltaClient:
     def get_positions(self) -> Dict:
         """Main positions method - now uses force enhancement first"""
         logger.info("📊 Fetching positions with complete product information...")
-        
+    
         # Try force enhancement first (most reliable for getting real symbols)
         try:
+            logger.info("🔄 Attempting force enhancement...")
             force_response = self.force_enhance_positions()
+        
             if force_response.get('success'):
                 positions = force_response.get('result', [])
+                logger.info(f"✅ Force enhancement returned {len(positions)} positions")
+            
+                # Log the first position's symbol
                 if positions:
-                    logger.info(f"✅ Force enhancement successful: {len(positions)} positions")
+                    first_pos_symbol = positions[0].get('product', {}).get('symbol', 'Still Unknown')
+                    logger.info(f"📋 First position symbol after enhancement: '{first_pos_symbol}'")
+            
+                if positions:
                     return force_response
+            else:
+                logger.error(f"❌ Force enhancement failed: {force_response.get('error')}")
         except Exception as e:
-            logger.warning(f"⚠️ Force enhancement failed: {e}")
-        
-        # Fallback to your existing position methods
+            logger.error(f"❌ Force enhancement exception: {e}")
+    
+        # Fallback to existing method
         logger.info("🔄 Using fallback position fetch...")
         return self.get_positions_by_underlying('BTC')
 
-    
     def get_product_by_id(self, product_id: int) -> Dict:
         """Get product details by product ID"""
         logger.info(f"📊 Fetching product details for ID: {product_id}")
