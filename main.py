@@ -134,6 +134,7 @@ telegram_client = TelegramClient(TELEGRAM_BOT_TOKEN)
 expiry_handler = ExpiryHandler(delta_client)
 options_handler = OptionsHandler(delta_client)
 position_handler = PositionHandler(delta_client)
+stoploss_handler = StopLossHandler(delta_client)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors"""
