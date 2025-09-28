@@ -330,6 +330,23 @@ async def debug_order_details_command(update: Update, context: ContextTypes.DEFA
 
 # Add to initialize_bot function
 
+async def check_method_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check if get_stop_orders method exists"""
+    try:
+        if hasattr(delta_client, 'get_stop_orders'):
+            await update.message.reply_text("✅ get_stop_orders method exists")
+            
+            # Test calling it
+            result = delta_client.get_stop_orders()
+            await update.message.reply_text(f"📊 Method result: {result}")
+        else:
+            await update.message.reply_text("❌ get_stop_orders method does NOT exist")
+            
+    except Exception as e:
+        await update.message.reply_text(f"❌ Check failed: {e}")
+
+# Add to initialize_bot function
+
 async def test_simple_orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Test simple orders call without parameters"""
     try:
@@ -1407,6 +1424,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
         application.add_handler(CommandHandler("testsimple", test_simple_orders_command))
         application.add_handler(CommandHandler("testorders", test_orders_api_command))
+        application.add_handler(CommandHandler("checkmethod", check_method_command))
         application.add_handler(CommandHandler("debugorder", debug_order_details_command))
         application.add_handler(CommandHandler("checkperms", check_permissions_command))
         application.add_handler(CommandHandler("testcorrect", test_correct_stop_command))
