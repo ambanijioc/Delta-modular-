@@ -228,6 +228,37 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Failed to send error message: {e}")
 
+async def check_handlers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check if handlers are properly initialized"""
+    try:
+        handlers_status = []
+        
+        # Check stoploss_handler
+        if 'stoploss_handler' in globals():
+            handlers_status.append("✅ stoploss_handler exists globally")
+            if hasattr(stoploss_handler, 'handle_limit_price_selection'):
+                handlers_status.append("✅ handle_limit_price_selection method exists")
+            else:
+                handlers_status.append("❌ handle_limit_price_selection method missing")
+        else:
+            handlers_status.append("❌ stoploss_handler not found globally")
+        
+        # Check other handlers
+        handlers_to_check = ['expiry_handler', 'options_handler', 'position_handler']
+        for handler_name in handlers_to_check:
+            if handler_name in globals():
+                handlers_status.append(f"✅ {handler_name} exists")
+            else:
+                handlers_status.append(f"❌ {handler_name} missing")
+        
+        message = "<b>🔍 Handlers Status:</b>\n\n" + "\n".join(handlers_status)
+        await update.message.reply_text(message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Check failed: {e}")
+
+# Add to initialize_bot function
+
 async def simple_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Simple callback test"""
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -1250,6 +1281,7 @@ async def initialize_bot():
         application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
         
         # Add all handlers
+        application.add_handler(CommandHandler("checkhandlers", check_handlers_command))
         application.add_handler(CommandHandler("start", start_command))
         application.add_handler(CommandHandler("debug", debug_command))
         application.add_handler(CommandHandler("debugpos", debug_positions_command))
