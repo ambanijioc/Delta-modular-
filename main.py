@@ -198,6 +198,54 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in debug_command: {e}", exc_info=True)
         await update.message.reply_text("❌ Debug command failed.")
 
+async def raw_positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show raw position data for debugging"""
+    try:
+        logger.info(f"Raw positions debug from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Fetching raw position data...")
+        
+        # Get raw positions
+        positions = delta_client.get_positions()
+        
+        if not positions.get('success'):
+            await loading_msg.edit_text(f"❌ Failed: {positions.get('error')}")
+            return
+        
+        positions_data = positions.get('result', [])
+        
+        if not positions_data:
+            await loading_msg.edit_text("📊 No positions found.")
+            return
+        
+        # Show first position's raw data
+        position = positions_data[0]
+        product = position.get('product', {})
+        
+        debug_info = f"""<b>🔍 Raw Position Data</b>
+
+<b>Position Level:</b>
+• Size: {position.get('size')}
+• Entry Price: {position.get('entry_price')}
+• PnL: {position.get('unrealized_pnl')}
+• Product ID: {position.get('product_id')}
+
+<b>Product Level:</b>
+• Symbol: '{product.get('symbol')}'
+• Contract Type: {product.get('contract_type')}
+• Strike Price: {product.get('strike_price')}
+• Underlying: {product.get('underlying_asset')}
+• Product ID: {product.get('id')}
+
+<b>Full Product Keys:</b>
+{', '.join(product.keys()) if product else 'No product data'}"""
+        
+        await loading_msg.edit_text(debug_info, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in raw_positions_command: {e}", exc_info=True)
+        await update.message.reply_text("❌ Debug failed.")
+
 async def debug_positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Debug command to check raw position data"""
     try:
@@ -651,6 +699,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("webhook", webhook_command))
         application.add_handler(CommandHandler("positions", positions_command))
         application.add_handler(CommandHandler("portfolio", portfolio_command))
+        application.add_handler(CommandHandler("rawpos", raw_positions_command))
         application.add_handler(CommandHandler("stoploss", stoploss_command))
         application.add_handler(CallbackQueryHandler(callback_handler))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
