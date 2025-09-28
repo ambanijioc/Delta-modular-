@@ -445,6 +445,137 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in portfolio_command: {e}", exc_info=True)
         await update.message.reply_text("❌ Failed to fetch portfolio data.")
 
+async def debug_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug: Show available products"""
+    try:
+        await update.message.reply_text("🔄 Fetching products...")
+        
+        # Get all products
+        products = delta_client.get_products('call_options,put_options,futures')
+        
+        if not products.get('success'):
+            await update.message.reply_text(f"❌ Failed to get products: {products.get('error')}")
+            return
+        
+        products_list = products.get('result', [])
+        
+        message = f"<b>📦 Available Products ({len(products_list)})</b>\n\n"
+        
+        # Show first 5 products
+        for i, product in enumerate(products_list[:5], 1):
+            symbol = product.get('symbol', 'Unknown')
+            product_id = product.get('id', 'No ID')
+            contract_type = product.get('contract_type', 'Unknown')
+            
+            message += f"{i}. <b>{symbol}</b>\n"
+            message += f"   ID: {product_id}\n"
+            message += f"   Type: {contract_type}\n\n"
+        
+        if len(products_list) > 5:
+            message += f"<i>... and {len(products_list) - 5} more products</i>"
+        
+        await update.message.reply_text(message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Debug failed: {e}")
+
+async def debug_raw_positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug: Show raw position API response"""
+    try:
+        await update.message.reply_text("🔄 Fetching raw positions...")
+        
+        # Direct API call to positions
+        positions = delta_client._make_request('GET', '/positions')
+        
+        if not positions.get('success'):
+            await update.message.reply_text(f"❌ API call failed: {positions.get('error')}")
+            return
+        
+        positions_list = positions.get('result', [])
+        
+        if not positions_list:
+            await update.message.reply_text("📊 No positions in raw API response")
+            return
+        
+        # Show raw data for first position
+        pos = positions_list[0]
+        
+        message = f"<b>🔍 Raw Position Data</b>\n\n"
+        message += f"<b>Position Keys:</b>\n{', '.join(pos.keys())}\n\n"
+        message += f"<b>Size:</b> {pos.get('size')}\n"
+        message += f"<b>Product ID:</b> {pos.get('product_id')}\n"
+        message += f"<b>Entry Price:</b> {pos.get('entry_price')}\n\n"
+        
+        product = pos.get('product', {})
+        if product:
+            message += f"<b>Product Keys:</b>\n{', '.join(product.keys())}\n\n"
+            message += f"<b>Product Symbol:</b> '{product.get('symbol')}'\n"
+            message += f"<b>Product ID:</b> {product.get('id')}\n"
+            message += f"<b>Contract Type:</b> {product.get('contract_type')}\n"
+        else:
+            message += f"<b>Product:</b> No product data in response\n"
+        
+        await update.message.reply_text(message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Debug failed: {e}")
+
+async def debug_matching_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug: Test the product matching process"""
+    try:
+        await update.message.reply_text("🔄 Testing product matching...")
+        
+        # Get products and positions separately
+        products_response = delta_client.get_products('call_options,put_options,futures')
+        positions_response = delta_client._make_request('GET', '/positions')
+        
+        if not products_response.get('success'):
+            await update.message.reply_text(f"❌ Products failed: {products_response.get('error')}")
+            return
+            
+        if not positions_response.get('success'):
+            await update.message.reply_text(f"❌ Positions failed: {positions_response.get('error')}")
+            return
+        
+        products_list = products_response.get('result', [])
+        positions_list = positions_response.get('result', [])
+        
+        # Filter non-zero positions
+        active_positions = [p for p in positions_list if float(p.get('size', 0)) != 0]
+        
+        message = f"<b>🔍 Matching Debug</b>\n\n"
+        message += f"Products found: {len(products_list)}\n"
+        message += f"Total positions: {len(positions_list)}\n"
+        message += f"Active positions: {len(active_positions)}\n\n"
+        
+        if active_positions:
+            pos = active_positions[0]
+            pos_product_id = pos.get('product_id') or pos.get('product', {}).get('id')
+            
+            message += f"<b>Position Product ID:</b> {pos_product_id}\n\n"
+            
+            # Look for matching product
+            matching_product = None
+            for product in products_list:
+                if product.get('id') == pos_product_id:
+                    matching_product = product
+                    break
+            
+            if matching_product:
+                message += f"<b>✅ Match Found!</b>\n"
+                message += f"Symbol: {matching_product.get('symbol')}\n"
+                message += f"Contract Type: {matching_product.get('contract_type')}\n"
+                message += f"Strike: {matching_product.get('strike_price')}\n"
+            else:
+                message += f"<b>❌ No Match Found</b>\n"
+                message += f"Looking for product ID: {pos_product_id}\n"
+                message += f"Available product IDs: {[p.get('id') for p in products_list[:5]]}\n"
+        
+        await update.message.reply_text(message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Matching debug failed: {e}")    
+
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enhanced callback handler with stop-loss support"""
     try:
@@ -701,6 +832,9 @@ async def initialize_bot():
         application.add_handler(CommandHandler("portfolio", portfolio_command))
         application.add_handler(CommandHandler("rawpos", raw_positions_command))
         application.add_handler(CommandHandler("stoploss", stoploss_command))
+        application.add_handler(CommandHandler("debugproducts", debug_products_command))
+        application.add_handler(CommandHandler("debugrawpos", debug_raw_positions_command))
+        application.add_handler(CommandHandler("debugmatch", debug_matching_command))
         application.add_handler(CallbackQueryHandler(callback_handler))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
         application.add_error_handler(error_handler)
