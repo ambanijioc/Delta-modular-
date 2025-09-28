@@ -695,15 +695,15 @@ class DeltaClient:
                 logger.info(f"📋 Trailing stop order with trail_amount: {trail_amount}")
             else:
             # Regular stop order
-            if order_type == "limit_order":
-                payload.update({
-                    "order_type": "limit_order",
-                    "stop_order_type": "stop_loss_order",  # This makes it a stop order
-                    "stop_price": str(stop_price),
-                    "limit_price": str(limit_price)
-                })
-                logger.info(f"📋 Stop limit order: stop={stop_price}, limit={limit_price}")
-            else:
+                if order_type == "limit_order":
+                    payload.update({
+                        "order_type": "limit_order",
+                        "stop_order_type": "stop_loss_order",  # This makes it a stop order
+                        "stop_price": str(stop_price),
+                        "limit_price": str(limit_price)
+                    })
+                    logger.info(f"📋 Stop limit order: stop={stop_price}, limit={limit_price}")
+                else:
                     # Market stop order
                     payload.update({
                         "order_type": "market_order", 
