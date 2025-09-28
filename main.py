@@ -292,7 +292,7 @@ async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Failed to fetch positions. Use /debug for more info.")
 
 async def stoploss_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /stoploss command"""
+    """Enhanced /stoploss command with position selection"""
     try:
         logger.info(f"Stop-loss command from user: {update.effective_user.id}")
         
@@ -301,13 +301,8 @@ async def stoploss_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             order_id = context.args[0]
             await stoploss_handler.show_stoploss_selection(update, context, order_id)
         else:
-            await update.message.reply_text(
-                "📋 <b>Stop-Loss Command Usage:</b>\n\n"
-                "/stoploss [order_id] - Add stop-loss to specific order\n\n"
-                "<b>Example:</b> /stoploss 12345\n\n"
-                "Get order IDs from trade confirmations or /positions",
-                parse_mode=ParseMode.HTML
-            )
+            # No order ID - show position selection interface
+            await stoploss_handler.show_stoploss_selection(update, context)
             
     except Exception as e:
         logger.error(f"Error in stoploss_command: {e}", exc_info=True)
