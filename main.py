@@ -654,13 +654,17 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         logger.info(f"Text message from user {update.effective_user.id}: {update.message.text}")
         
+        # Check all possible input states
         if context.user_data.get('waiting_for_lot_size'):
             await options_handler.handle_lot_size_input(update, context)
         elif context.user_data.get('waiting_for_trigger_price'):
+            logger.info("Processing trigger price input")
             await stoploss_handler.handle_trigger_price_input(update, context)
         elif context.user_data.get('waiting_for_limit_price'):
+            logger.info("Processing limit price input")
             await stoploss_handler.handle_limit_price_input(update, context)
         elif context.user_data.get('waiting_for_trail_amount'):
+            logger.info("Processing trail amount input")
             await stoploss_handler.handle_trail_amount_input(update, context)
         else:
             await update.message.reply_text(
@@ -670,7 +674,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "/webhook - Webhook status\n"
                 "/positions - View positions\n"
                 "/portfolio - Portfolio summary\n"
-                "/stoploss [order_id] - Add stop-loss protection",
+                "/stoploss - Add stop-loss protection",
                 reply_markup=telegram_client.create_main_menu_keyboard()
             )
             
