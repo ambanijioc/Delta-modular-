@@ -99,6 +99,27 @@ class DeltaClient:
             logger.error(f"❌ Request exception: {e}")
             return {"success": False, "error": str(e)}
 
+        def get_stop_orders(self, product_id: int = None) -> Dict:
+            """Get stop orders - simple method"""
+            try:
+                logger.info("🔍 Fetching stop orders...")
+            
+            # Simple call without parameters
+                response = self._make_request('GET', '/orders')
+            
+                if not response.get('success'):
+                    logger.error(f"❌ Orders API failed: {response.get('error')}")
+                    return response
+            
+                all_orders = response.get('result', [])
+                logger.info(f"📊 Retrieved {len(all_orders)} total orders")
+            
+                return {"success": True, "result": all_orders}
+            
+            except Exception as e:
+                logger.error(f"❌ Exception in get_stop_orders: {e}")
+                return {"success": False, "error": str(e)}
+    
     def test_connection(self) -> Dict:
         """Test API connection"""
         logger.info("🧪 Testing Delta Exchange API connection...")
@@ -785,10 +806,6 @@ def cancel_all_stop_orders(self, product_id: int = None) -> Dict:
         """Get order details by order ID"""
         logger.info(f"📊 Fetching order details for ID: {order_id}")
         return self._make_request('GET', f'/orders/{order_id}')
-
-    def get_stop_orders(self, product_id: int = None) -> Dict:
-        """Ultra simple get orders"""
-        return self._make_request('GET', '/orders')
 
     def cancel_stop_order(self, order_id: str) -> Dict:
         """Cancel a stop order"""
