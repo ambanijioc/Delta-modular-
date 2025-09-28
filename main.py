@@ -198,6 +198,48 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in debug_command: {e}", exc_info=True)
         await update.message.reply_text("❌ Debug command failed.")
 
+async def debug_positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug command to check raw position data"""
+    try:
+        logger.info(f"Debug positions command from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Fetching raw position data...")
+        
+        # Get raw positions data
+        positions = delta_client.get_positions()
+        
+        if not positions.get('success'):
+            await loading_msg.edit_text(f"❌ Failed to fetch positions: {positions.get('error')}")
+            return
+        
+        positions_data = positions.get('result', [])
+        
+        if not positions_data:
+            await loading_msg.edit_text("📊 No positions found in raw data.")
+            return
+        
+        # Format raw data for debugging
+        debug_message = "<b>🔍 Raw Position Data Debug</b>\n\n"
+        
+        for i, position in enumerate(positions_data[:3], 1):  # Show first 3 for debugging
+            debug_message += f"<b>Position {i}:</b>\n"
+            debug_message += f"Raw Size: {position.get('size', 'N/A')}\n"
+            debug_message += f"Entry Price: {position.get('entry_price', 'N/A')}\n"
+            debug_message += f"Product ID: {position.get('product_id', 'N/A')}\n"
+            
+            product = position.get('product', {})
+            debug_message += f"Product Symbol: {product.get('symbol', 'N/A')}\n"
+            debug_message += f"Contract Type: {product.get('contract_type', 'N/A')}\n"
+            debug_message += f"Underlying: {product.get('underlying_asset', 'N/A')}\n"
+            debug_message += f"Strike: {product.get('strike_price', 'N/A')}\n"
+            debug_message += "\n---\n\n"
+        
+        await loading_msg.edit_text(debug_message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in debug_positions_command: {e}", exc_info=True)
+        await update.message.reply_text("❌ Debug command failed.")
+
 async def webhook_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Check and reset webhook if needed"""
     try:
