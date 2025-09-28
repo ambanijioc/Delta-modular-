@@ -378,6 +378,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data.startswith("add_stoploss_"):
             order_id = data.replace("add_stoploss_", "")
             await stoploss_handler.show_stoploss_selection(update, context, order_id)
+        elif data.startswith("sl_select_pos_"):  # New: Handle position selection
+            await stoploss_handler.handle_position_selection(update, context)
         elif data.startswith("sl_type_"):
             await stoploss_handler.handle_stoploss_type_selection(update, context)
         elif data.startswith("sl_limit_"):
