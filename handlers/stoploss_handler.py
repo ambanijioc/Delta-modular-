@@ -21,7 +21,7 @@ class StopLossHandler:
         ]
         return InlineKeyboardMarkup(keyboard)
 
-        def create_limit_price_keyboard(self) -> InlineKeyboardMarkup:
+    def create_limit_price_keyboard(self) -> InlineKeyboardMarkup:
         """Create keyboard for limit price selection - now percentage based"""
         keyboard = [
             [InlineKeyboardButton("✅ Enter as Percentage", callback_data="sl_limit_percentage")],
