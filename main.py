@@ -762,6 +762,59 @@ async def test_force_enhance_command(update: Update, context: ContextTypes.DEFAU
     except Exception as e:
         await update.message.reply_text(f"❌ Test failed: {e}")    
 
+async def test_correct_stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test stop order with correct Delta Exchange API"""
+    try:
+        logger.info(f"Testing correct stop API from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Testing correct stop order API...")
+        
+        # Get position
+        positions = delta_client.force_enhance_positions()
+        
+        if not positions.get('success') or not positions.get('result'):
+            await loading_msg.edit_text("❌ No positions found")
+            return
+        
+        position = positions['result'][0]
+        product_id = position.get('product', {}).get('id') or position.get('product_id')
+        size = abs(int(position.get('size', 0)))
+        current_side = 'buy' if float(position.get('size', 0)) > 0 else 'sell'
+        exit_side = 'sell' if current_side == 'buy' else 'buy'
+        
+        # Test the corrected API call
+        result = delta_client.place_stop_order(
+            product_id=product_id,
+            size=size,
+            side=exit_side,
+            stop_price="10.00",
+            limit_price="11.00", 
+            order_type="limit_order",
+            reduce_only=True
+        )
+        
+        debug_result = f"""<b>🔍 Corrected API Test Result</b>
+
+<b>Using:</b> POST /orders (not /orders/stop)
+<b>Stop Order Type:</b> stop_loss_order
+
+<b>Success:</b> {result.get('success')}
+
+<b>Response:</b>
+<code>{json.dumps(result, indent=2)}</code>"""
+        
+        if result.get('success'):
+            order_id = result.get('result', {}).get('id', 'Missing')
+            debug_result += f"\n\n✅ <b>Order placed!</b>\nOrder ID: <code>{order_id}</code>"
+        
+        await loading_msg.edit_text(debug_result, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in test_correct_stop_command: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Test failed: {e}")
+
+# Add to initialize_bot function
+
 async def check_permissions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Check API key permissions"""
     try:
@@ -1093,6 +1146,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("debugrawpos", debug_raw_positions_command))
         application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
         application.add_handler(CommandHandler("checkperms", check_permissions_command))
+        application.add_handler(CommandHandler("testcorrect", test_correct_stop_command))
         application.add_handler(CommandHandler("debugmatch", debug_matching_command))
         application.add_handler(CallbackQueryHandler(callback_handler))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
