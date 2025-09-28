@@ -330,6 +330,33 @@ async def debug_order_details_command(update: Update, context: ContextTypes.DEFA
 
 # Add to initialize_bot function
 
+async def test_simple_orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test simple orders call without parameters"""
+    try:
+        loading_msg = await update.message.reply_text("🔄 Testing simple orders...")
+        
+        # Test without any parameters
+        response = delta_client._make_request('GET', '/orders')
+        
+        if response.get('success'):
+            orders = response.get('result', [])
+            message = f"✅ Simple orders call successful!\n\n"
+            message += f"Total orders: {len(orders)}\n"
+            
+            if orders:
+                first_order = orders[0]
+                message += f"First order state: {first_order.get('state')}\n"
+                message += f"First order type: {first_order.get('order_type')}\n"
+        else:
+            message = f"❌ Simple orders failed: {response.get('error')}"
+        
+        await loading_msg.edit_text(message)
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Test failed: {e}")
+
+# Add to initialize_bot function
+
 async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Debug command to check system status"""
     try:
@@ -1369,6 +1396,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("debugproducts", debug_products_command))
         application.add_handler(CommandHandler("debugrawpos", debug_raw_positions_command))
         application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
+        application.add_handler(CommandHandler("testsimple", test_simple_orders_command))
         application.add_handler(CommandHandler("testorders", test_orders_api_command))
         application.add_handler(CommandHandler("debugorder", debug_order_details_command))
         application.add_handler(CommandHandler("checkperms", check_permissions_command))
