@@ -163,22 +163,87 @@ class DeltaClient:
             return None
     
     def get_live_ticker(self, product_id: int) -> Dict:
-        """Get live ticker data for a product"""
+        """Get live ticker data using correct Delta Exchange API endpoint"""
         try:
-            logger.info(f"🔍 Fetching live ticker for product: {product_id}")
-            response = self._make_request('GET', f'/tickers/{product_id}')
+            logger.info(f"🔍 Fetching live ticker for product ID: {product_id}")
+        
+        # First, we need to get the product symbol from the product ID
+        # Method 1: Try to get single ticker by product_id (if supported)
+            try:
+                response = self._make_request('GET', f'/tickers/{product_id}')
+                if response.get('success'):
+                    ticker_data = response.get('result', {})
+                    if ticker_data:
+                        logger.info(f"✅ Got ticker via product_id: mark_price={ticker_data.get('mark_price')}")
+                        return ticker_data
+            except Exception as e:
+                logger.warning(f"Product ID ticker failed, trying symbol method: {e}")
+        
+        # Method 2: Get all tickers and filter by product_id
+            response = self._make_request('GET', '/tickers')
+        
+            if not response.get('success'):
+                logger.error(f"❌ Tickers API failed: {response.get('error')}")
+                return {}
+        
+            all_tickers = response.get('result', [])
+            logger.info(f"📊 Retrieved {len(all_tickers)} total tickers")
+        
+        # Find ticker for our product_id
+            for ticker in all_tickers:
+                if ticker.get('product_id') == product_id:
+                    logger.info(f"✅ Found ticker for product {product_id}: mark_price={ticker.get('mark_price')}")
+                    return ticker
+        
+            logger.warning(f"⚠️ No ticker found for product_id: {product_id}")
+            return {}
+        
+        except Exception as e:
+            logger.error(f"❌ Error getting ticker for product {product_id}: {e}")
+            return {}
+
+    def get_live_ticker_by_symbol(self, symbol: str) -> Dict:
+        """Get live ticker data by symbol (alternative method)"""
+        try:
+            logger.info(f"🔍 Fetching live ticker for symbol: {symbol}")
+        
+        # Use the correct endpoint format from your documentation
+            response = self._make_request('GET', f'/tickers/{symbol}')
         
             if response.get('success'):
                 ticker_data = response.get('result', {})
-                logger.info(f"✅ Got ticker data: mark_price={ticker_data.get('mark_price')}")
+                logger.info(f"✅ Got ticker for {symbol}: mark_price={ticker_data.get('mark_price')}")
                 return ticker_data
             else:
-                logger.warning(f"⚠️ Ticker request failed: {response.get('error')}")
+                logger.warning(f"⚠️ Ticker request failed for {symbol}: {response.get('error')}")
                 return {}
             
         except Exception as e:
-            logger.error(f"❌ Error getting ticker: {e}")
+            logger.error(f"❌ Error getting ticker for {symbol}: {e}")
             return {}
+
+    def get_all_tickers_filtered(self, contract_types: str = "call_options,put_options") -> Dict:
+        """Get all tickers with optional filtering by contract types"""
+        try:
+            logger.info(f"🔍 Fetching all tickers with filter: {contract_types}")
+        
+            params = {}
+            if contract_types:
+                params['contract_types'] = contract_types
+        
+            response = self._make_request('GET', '/tickers', params)
+        
+            if response.get('success'):
+                tickers = response.get('result', [])
+                logger.info(f"✅ Got {len(tickers)} filtered tickers")
+                return {"success": True, "result": tickers}
+            else:
+                logger.error(f"❌ Filtered tickers failed: {response.get('error')}")
+                return response
+        
+        except Exception as e:
+            logger.error(f"❌ Error getting filtered tickers: {e}")
+            return {"success": False, "error": str(e)}
     
     def get_ticker(self, symbol: str) -> Dict:
         """Get ticker data for a specific symbol"""
