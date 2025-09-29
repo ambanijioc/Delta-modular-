@@ -355,7 +355,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Failed to send error message: {e}")
 
- async def test_ticker_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def test_ticker_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Test ticker API with your positions"""
     try:
         logger.info(f"Testing ticker API from user: {update.effective_user.id}")
