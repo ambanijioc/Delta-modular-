@@ -1662,6 +1662,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
         application.add_handler(CommandHandler("testsimple", test_simple_orders_command))
         application.add_handler(CommandHandler("testorders", test_orders_api_command))
+        application.add_handler(CommandHandler("testticker", test_ticker_command))
         application.add_handler(CommandHandler("checkmethod", check_method_command))
         application.add_handler(CommandHandler("debugorder", debug_order_details_command))
         application.add_handler(CommandHandler("checkperms", check_permissions_command))
