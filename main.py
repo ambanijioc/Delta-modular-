@@ -355,6 +355,78 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Failed to send error message: {e}")
 
+ async def test_ticker_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test ticker API with your positions"""
+    try:
+        logger.info(f"Testing ticker API from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Testing ticker API...")
+        
+        # Get positions first
+        positions = delta_client.force_enhance_positions()
+        
+        if not positions.get('success') or not positions.get('result'):
+            await loading_msg.edit_text("❌ No positions found to test ticker API")
+            return
+        
+        position = positions['result'][0]  # Test first position
+        product = position.get('product', {})
+        product_id = product.get('id')
+        symbol = product.get('symbol', 'Unknown')
+        
+        # Test ticker API
+        message = f"<b>🧪 Ticker API Test</b>\n\n"
+        message += f"<b>Position:</b> {symbol}\n"
+        message += f"<b>Product ID:</b> {product_id}\n\n"
+        
+        # Test method 1: By product_id
+        ticker1 = delta_client.get_live_ticker(product_id)
+        if ticker1:
+            mark_price1 = ticker1.get('mark_price', 'N/A')
+            message += f"<b>✅ Method 1 (product_id):</b>\n"
+            message += f"Mark Price: {mark_price1}\n"
+            message += f"Close: {ticker1.get('close', 'N/A')}\n\n"
+        else:
+            message += f"<b>❌ Method 1 (product_id):</b> Failed\n\n"
+        
+        # Test method 2: By symbol
+        ticker2 = delta_client.get_live_ticker_by_symbol(symbol)
+        if ticker2:
+            mark_price2 = ticker2.get('mark_price', 'N/A')
+            message += f"<b>✅ Method 2 (symbol):</b>\n"
+            message += f"Mark Price: {mark_price2}\n"
+            message += f"Close: {ticker2.get('close', 'N/A')}\n\n"
+        else:
+            message += f"<b>❌ Method 2 (symbol):</b> Failed\n\n"
+        
+        # Test method 3: All tickers filtered
+        all_tickers = delta_client.get_all_tickers_filtered("call_options,put_options")
+        if all_tickers.get('success'):
+            tickers_list = all_tickers.get('result', [])
+            found_ticker = None
+            for ticker in tickers_list:
+                if ticker.get('product_id') == product_id:
+                    found_ticker = ticker
+                    break
+            
+            if found_ticker:
+                mark_price3 = found_ticker.get('mark_price', 'N/A')
+                message += f"<b>✅ Method 3 (all tickers filtered):</b>\n"
+                message += f"Mark Price: {mark_price3}\n"
+                message += f"Close: {found_ticker.get('close', 'N/A')}\n"
+            else:
+                message += f"<b>❌ Method 3:</b> Product not found in all tickers\n"
+        else:
+            message += f"<b>❌ Method 3:</b> All tickers failed\n"
+        
+        await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in test_ticker_command: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Test failed: {e}")
+
+# Add to initialize_bot function
+
 async def check_handlers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Check if handlers are properly initialized"""
     try:
