@@ -275,6 +275,83 @@ class DeltaClient:
         }
         return self._make_request('GET', '/tickers', params)
     
+    def format_enhanced_positions_with_live_data(positions: List[Dict], delta_client=None) -> str:
+        """Enhanced format positions with live market data using correct API"""
+        message = "<b>📊 Open Positions</b>\n\n"
+    
+        if not positions:
+            return "<b>📊 No Open Positions</b>\n\nYou currently have no active positions."
+    
+        for i, position in enumerate(positions[:10], 1):
+        # Get enhanced product data
+            product = position.get('product', {})
+        
+        # Use the actual symbol from enhanced data
+            symbol = product.get('symbol', 'Unknown')
+        
+        # Format the symbol for better display
+            display_symbol = format_option_symbol_for_display(symbol)
+        
+        # Position details
+            size = float(position.get('size', 0))
+            entry_price = float(position.get('entry_price', 0))
+            mark_price = float(position.get('mark_price', 0))
+            pnl = float(position.get('unrealized_pnl', 0))
+        
+        # Get live market data if mark price is 0 and we have delta_client
+            product_id = product.get('id') or position.get('product_id')
+        
+            if (mark_price == 0 or pnl == 0) and delta_client:
+                try:
+                # Method 1: Try by product_id
+                    live_data = delta_client.get_live_ticker(product_id)
+                
+                # Method 2: If that fails, try by symbol
+                    if not live_data and symbol and symbol != 'Unknown':
+                        live_data = delta_client.get_live_ticker_by_symbol(symbol)
+                
+                    if live_data and live_data.get('mark_price'):
+                        mark_price = float(live_data.get('mark_price', 0))
+                        logger.info(f"✅ Got live mark price for {display_symbol}: ${mark_price}")
+                    
+                    # Recalculate PnL with live mark price
+                        if mark_price > 0 and entry_price > 0:
+                            if size > 0:  # Long position
+                                pnl = (mark_price - entry_price) * abs(size)
+                            else:  # Short position
+                                pnl = (entry_price - mark_price) * abs(size)
+                            logger.info(f"💰 Calculated PnL for {display_symbol}: ${pnl}")
+                
+                except Exception as e:
+                    logger.error(f"Error fetching live data for {display_symbol}: {e}")
+        
+        # Determine position type and emoji
+            if size > 0:
+                side = "LONG"
+                side_emoji = "📈"
+            elif size < 0:
+                side = "SHORT"
+                side_emoji = "📉"
+            else:
+                continue  # Skip zero positions
+        
+        # PnL formatting
+            pnl_emoji = "🟢" if pnl >= 0 else "🔴"
+            pnl_text = f"{pnl_emoji} ${pnl:,.2f}"
+        
+        # Price formatting
+            entry_text = f"${entry_price:,.4f}" if entry_price > 0 else "N/A"
+            mark_text = f"${mark_price:,.4f}" if mark_price > 0 else "N/A"
+        
+            message += f"<b>{i}. {display_symbol}</b> {side_emoji}\n"
+            message += f"   Side: {side}\n"
+            message += f"   Size: {abs(size):,.0f} contracts\n"
+            message += f"   Entry: {entry_text}\n"
+            message += f"   Mark: {mark_text}\n"
+            message += f"   PnL: {pnl_text}\n\n"
+    
+        return message
+ 
     def place_order(self, product_id: int, side: str, size: int, order_type: str = 'market_order') -> Dict:
         """Place an order"""
         payload = {
