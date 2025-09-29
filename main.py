@@ -1353,43 +1353,45 @@ async def check_permissions_command(update: Update, context: ContextTypes.DEFAUL
 # Add to initialize_bot function
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Enhanced message handler with all stop-loss input types"""
+    """Enhanced message handler with multi-strike inputs"""
     try:
-        logger.info(f"Text message from user {update.effective_user.id}: {update.message.text}")
+        message_text = update.message.text.strip()
+        logger.info(f"Text message from user {update.effective_user.id}: '{message_text}'")
         
-        # Check all possible input states
-        if context.user_data.get('waiting_for_lot_size'):
+        # Check all input states
+        if context.user_data.get('waiting_for_multi_trigger_percentage'):
+            logger.info("🎯 Routing to multi-strike trigger percentage handler")
+            await multi_stoploss_handler.handle_trigger_percentage_input(update, context)
+        elif context.user_data.get('waiting_for_multi_limit_percentage'):
+            logger.info("🎯 Routing to multi-strike limit percentage handler")
+            await multi_stoploss_handler.handle_limit_percentage_input(update, context)
+        elif context.user_data.get('waiting_for_lot_size'):
+            logger.info("🎯 Routing to lot size handler")
             await options_handler.handle_lot_size_input(update, context)
         elif context.user_data.get('waiting_for_trigger_price'):
-            logger.info("Processing trigger price input")
+            logger.info("🎯 Routing to trigger price handler")
             await stoploss_handler.handle_trigger_price_input(update, context)
         elif context.user_data.get('waiting_for_limit_percentage'):
-            logger.info("Processing limit percentage input")
+            logger.info("🎯 Routing to limit percentage handler")
             await stoploss_handler.handle_limit_percentage_input(update, context)
         elif context.user_data.get('waiting_for_limit_absolute'):
-            logger.info("Processing limit absolute input")
+            logger.info("🎯 Routing to limit absolute handler")
             await stoploss_handler.handle_limit_absolute_input(update, context)
         elif context.user_data.get('waiting_for_trail_amount'):
-            logger.info("Processing trail amount input")
+            logger.info("🎯 Routing to trail amount handler")
             await stoploss_handler.handle_trail_amount_input(update, context)
         else:
+            logger.info("ℹ️ No waiting state - showing help menu")
             await update.message.reply_text(
                 "👋 Hi! Available commands:\n"
                 "/start - Main menu\n"
-                "/debug - System status\n"
-                "/webhook - Webhook status\n"
                 "/positions - View positions\n"
-                "/portfolio - Portfolio summary\n"
-                "/stoploss - Add stop-loss protection",
-                reply_markup=telegram_client.create_main_menu_keyboard()
+                "/orders - View active orders"
             )
             
     except Exception as e:
         logger.error(f"Error in message_handler: {e}", exc_info=True)
-        try:
-            await update.message.reply_text("❌ An error occurred. Please try /start")
-        except:
-            pass
+        await update.message.reply_text("❌ An error occurred. Please try /start")
 
 # ============= TORNADO HANDLERS =============
 
