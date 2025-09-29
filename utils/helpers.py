@@ -23,8 +23,11 @@ def format_expiry_message(expiry_date: str, spot_price: float, atm_strike: float
     
     return message
 
-def format_enhanced_positions_with_live_data(positions: List[Dict]) -> str:
+def format_enhanced_positions_with_live_data(positions: List[Dict], delta_client=None) -> str:
     """Enhanced format positions with live market data and proper symbols"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     message = "<b>📊 Open Positions</b>\n\n"
     
     if not positions:
@@ -46,18 +49,32 @@ def format_enhanced_positions_with_live_data(positions: List[Dict]) -> str:
         mark_price = float(position.get('mark_price', 0))
         pnl = float(position.get('unrealized_pnl', 0))
         
-        # Get live market data if mark price is 0
+        # Get live market data if mark price is 0 and we have delta_client
         product_id = product.get('id') or position.get('product_id')
-        if mark_price == 0 and product_id:
-            live_data = get_live_market_data(product_id)
-            if live_data:
-                mark_price = live_data.get('mark_price', 0)
-                # Recalculate PnL if we have live mark price
-                if mark_price > 0 and entry_price > 0:
-                    if size > 0:  # Long position
-                        pnl = (mark_price - entry_price) * abs(size)
-                    else:  # Short position
-                        pnl = (entry_price - mark_price) * abs(size)
+        
+        if (mark_price == 0 or pnl == 0) and delta_client and product_id:
+            try:
+                logger.info(f"🔍 Fetching live data for product {product_id}")
+                
+                # Try to get live ticker data
+                live_data = delta_client.get_live_ticker(product_id)
+                
+                if live_data and live_data.get('mark_price'):
+                    mark_price = float(live_data.get('mark_price', 0))
+                    logger.info(f"✅ Got live mark price for {display_symbol}: ${mark_price}")
+                    
+                    # Recalculate PnL with live mark price
+                    if mark_price > 0 and entry_price > 0:
+                        if size > 0:  # Long position
+                            pnl = (mark_price - entry_price) * abs(size)
+                        else:  # Short position
+                            pnl = (entry_price - mark_price) * abs(size)
+                        logger.info(f"💰 Calculated PnL for {display_symbol}: ${pnl}")
+                else:
+                    logger.warning(f"⚠️ No live data available for product {product_id}")
+                
+            except Exception as e:
+                logger.error(f"Error fetching live data for {display_symbol}: {e}")
         
         # Determine position type and emoji
         if size > 0:
@@ -82,11 +99,36 @@ def format_enhanced_positions_with_live_data(positions: List[Dict]) -> str:
         message += f"   Size: {abs(size):,.0f} contracts\n"
         message += f"   Entry: {entry_text}\n"
         message += f"   Mark: {mark_text}\n"
-        message += f"   PnL: {pnl_text}\n"
-        
-        message += "\n"
+        message += f"   PnL: {pnl_text}\n\n"
     
     return message
+
+def format_option_symbol_for_display(symbol: str) -> str:
+    """Format option symbol for better readability"""
+    if not symbol or symbol == 'Unknown':
+        return 'Unknown Position'
+    
+    # Handle Delta Exchange format: C-BTC-112000-290925
+    if '-' in symbol:
+        parts = symbol.split('-')
+        if len(parts) >= 4:
+            option_type = parts[0]  # C or P
+            underlying = parts[1]   # BTC
+            strike = parts[2]       # 112000
+            expiry = parts[3]       # 290925
+            
+            # Convert option type
+            if option_type == 'C':
+                option_name = 'CE'
+            elif option_type == 'P':
+                option_name = 'PE'
+            else:
+                option_name = option_type
+            
+            return f"{underlying} {strike} {option_name}"
+    
+    # Return original symbol if not in expected format
+    return symbol
 
 def get_live_market_data(product_id: int) -> Dict:
     """Get live market data for a product"""
