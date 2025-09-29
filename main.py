@@ -372,17 +372,16 @@ async def simple_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("Simple test:", reply_markup=reply_markup)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Clean start command - positions only shown when requested"""
+    """Clean start command with multi-strike stop-loss"""
     try:
         logger.info(f"Start command from user: {update.effective_user.id}")
         
-        # Get portfolio summary only (not positions)
+        # Get portfolio summary
         portfolio = delta_client.get_portfolio_summary()
         
-        # Build welcome message
         message_parts = []
         
-        # Add portfolio balance if available
+        # Add portfolio balance
         if portfolio.get('success'):
             balances = portfolio.get('result', [])
             total_balance = sum(float(b.get('available_balance', 0)) for b in balances)
@@ -395,23 +394,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 <b>Available Actions:</b>
 • 📊 View your current positions
 • 📈 Start new options trading  
-• 🛡️ Add stop-loss protection
+• 🛡️ Multi-strike stop-loss protection
 • 💰 Check portfolio summary
 
 Choose an action below:"""
         
         message_parts.append(welcome_section)
-        
-        # Combine message
         full_message = "\n\n".join(message_parts)
         
-        # Create main menu keyboard
+        # Updated keyboard with new button
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         
         keyboard = [
             [InlineKeyboardButton("📅 Select Expiry", callback_data="select_expiry")],
             [InlineKeyboardButton("📊 Show Positions", callback_data="show_positions")],
-            [InlineKeyboardButton("🛡️ Add Stop-Loss", callback_data="add_stoploss_menu")],
+            [InlineKeyboardButton("🛡️ Multi-Strike Stop-Loss", callback_data="multi_strike_stoploss")],
             [InlineKeyboardButton("💰 Portfolio Summary", callback_data="portfolio_summary")]
         ]
         
@@ -425,11 +422,7 @@ Choose an action below:"""
         
     except Exception as e:
         logger.error(f"Error in start_command: {e}", exc_info=True)
-        await update.message.reply_text(
-            "❌ An error occurred. Try manual commands:\n"
-            "/positions - View positions\n" 
-            "/stoploss - Add stop-loss"
-        )
+        await update.message.reply_text("❌ An error occurred.")
 
 async def debug_order_details_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show raw order details for debugging"""
