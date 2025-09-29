@@ -1,3 +1,4 @@
+from typing import Dict, List  # Add List import here
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from api.delta_client import DeltaClient
