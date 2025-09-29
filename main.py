@@ -607,6 +607,45 @@ async def test_simple_orders_command(update: Update, context: ContextTypes.DEFAU
 
 # Add to initialize_bot function
 
+async def test_position_formatting_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test position formatting with live data"""
+    try:
+        logger.info(f"Testing position formatting from user: {update.effective_user.id}")
+        
+        loading_msg = await update.message.reply_text("🔄 Testing position formatting...")
+        
+        # Get positions
+        positions = delta_client.force_enhance_positions()
+        
+        if not positions.get('success') or not positions.get('result'):
+            await loading_msg.edit_text("❌ No positions found")
+            return
+        
+        positions_data = positions['result']
+        
+        # Test formatting WITH delta_client
+        message_with_live = format_enhanced_positions_with_live_data(positions_data, delta_client)
+        
+        # Test formatting WITHOUT delta_client (to see the difference)
+        message_without_live = format_enhanced_positions_with_live_data(positions_data, None)
+        
+        result_message = f"<b>🧪 Position Formatting Test</b>\n\n"
+        result_message += f"<b>WITH Live Data:</b>\n{message_with_live}\n\n"
+        result_message += f"<b>WITHOUT Live Data:</b>\n{message_without_live}"
+        
+        # Split message if too long
+        if len(result_message) > 4000:
+            await loading_msg.edit_text(f"<b>🧪 WITH Live Data:</b>\n{message_with_live}", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(f"<b>WITHOUT Live Data:</b>\n{message_without_live}", parse_mode=ParseMode.HTML)
+        else:
+            await loading_msg.edit_text(result_message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in test_position_formatting_command: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Test failed: {e}")
+
+# Add to initialize_bot function
+
 async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Debug command to check system status"""
     try:
@@ -1659,6 +1698,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("debugstop", debug_stop_order_command))
         application.add_handler(CommandHandler("testsimple", test_simple_orders_command))
         application.add_handler(CommandHandler("testorders", test_orders_api_command))
+        application.add_handler(CommandHandler("testformat", test_position_formatting_command))
         application.add_handler(CommandHandler("testticker", test_ticker_command))
         application.add_handler(CommandHandler("checkmethod", check_method_command))
         application.add_handler(CommandHandler("debugorder", debug_order_details_command))
