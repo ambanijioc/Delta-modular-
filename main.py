@@ -21,6 +21,7 @@ from utils.constants import START_MESSAGE, HELP_MESSAGE
 from utils.helpers import format_enhanced_positions_with_live_data
 from utils.helpers import format_enhanced_positions_message
 from handlers.stoploss_handler import StopLossHandler
+from handlers.multi_stoploss_handler import MultiStrikeStopl0ssHandler
 
 # Initialize logging
 logging.basicConfig(
@@ -137,6 +138,7 @@ expiry_handler = ExpiryHandler(delta_client)
 options_handler = OptionsHandler(delta_client)
 position_handler = PositionHandler(delta_client)
 stoploss_handler = StopLossHandler(delta_client)
+multi_stoploss_handler = MultiStrikeStopl0ssHandler(delta_client)
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enhanced callback handler with proper stop-loss routing"""
@@ -165,6 +167,28 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"❌ Percentage handler failed: {e}", exc_info=True)
                 await query.edit_message_text("❌ Error processing percentage selection")
+            return
+
+        # Multi-strike stop-loss callbacks
+        if data == "multi_strike_stoploss":
+            logger.info("🎯 Processing multi-strike stop-loss")
+            await multi_stoploss_handler.show_multi_strike_menu(update, context)
+            return
+        
+        elif data.startswith("ms_toggle_"):
+            await multi_stoploss_handler.handle_position_toggle(update, context)
+            return
+        
+        elif data == "ms_proceed":
+            await multi_stoploss_handler.handle_proceed_to_prices(update, context)
+            return
+        
+        elif data == "ms_clear":
+            await multi_stoploss_handler.handle_clear_selection(update, context)
+            return
+        
+        elif data == "ms_cancel":
+            await multi_stoploss_handler.handle_cancel(update, context)
             return
         
         # In your callback_handler function, add:
