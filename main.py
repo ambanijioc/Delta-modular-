@@ -302,7 +302,7 @@ Choose an action below:"""
         logger.error(f"Error in back_to_main_callback: {e}", exc_info=True)
 
 async def show_positions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle show positions button click"""
+    """Handle show positions button click - with live market data"""
     try:
         query = update.callback_query
         await query.answer()
@@ -322,11 +322,8 @@ async def show_positions_callback(update: Update, context: ContextTypes.DEFAULT_
         if not positions_data:
             message = "📊 <b>No Open Positions</b>\n\nYou currently have no active positions.\n\nUse 'Select Expiry' to start trading!"
         else:
-            # Use enhanced position formatting
-            if 'format_enhanced_positions_with_live_data' in globals():
-                message = format_enhanced_positions_with_live_data(positions_data)
-            else:
-                message = format_basic_positions(positions_data)
+            # IMPORTANT: Pass delta_client to get live market data
+            message = format_enhanced_positions_with_live_data(positions_data, delta_client)
         
         # Add back button
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
