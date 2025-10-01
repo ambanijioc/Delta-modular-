@@ -148,6 +148,30 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         logger.info(f"=== PROCESSING CALLBACK: {data} ===")
         
+        # Portfolio Summary callback
+        if data == "portfolio_summary":
+            logger.info("🎯 Processing portfolio summary")
+            await portfolio_summary_callback(update, context)
+            return
+        
+        # Multi-strike stop-loss callbacks
+        elif data == "multi_strike_stoploss":
+            logger.info("🎯 Processing multi-strike stop-loss")
+            await multi_stoploss_handler.show_multi_strike_menu(update, context)
+            return
+        
+        # Show positions callback
+        elif data == "show_positions":
+            logger.info("🎯 Processing show positions")
+            await show_positions_callback(update, context)
+            return
+        
+        # Back to main menu callback
+        elif data == "back_to_main":
+            logger.info("🎯 Processing back to main menu")
+            await back_to_main_callback(update, context)
+            return
+
         # Test callback first
         if data == "test_simple":
             await query.edit_message_text("✅ Simple callback works!")
