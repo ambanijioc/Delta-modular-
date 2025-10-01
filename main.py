@@ -809,60 +809,48 @@ async def webhook_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Failed to check webhook status.")
 
 async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Enhanced positions command using force enhancement"""
+    """Show positions with live market data - enhanced version"""
     try:
         logger.info(f"Positions command from user: {update.effective_user.id}")
         
         loading_msg = await update.message.reply_text("🔄 Fetching positions...")
         
-        # Use the enhanced positions method directly
+        # Get enhanced positions
         positions = delta_client.force_enhance_positions()
         portfolio = delta_client.get_portfolio_summary()
         
         if not positions.get('success'):
             error_msg = positions.get('error', 'Unknown error')
-            if 'bad_schema' in str(error_msg):
-                error_text = "❌ API schema error. Check API permissions."
-            else:
-                error_text = f"❌ {error_msg}"
-            
-            await loading_msg.edit_text(error_text)
+            await loading_msg.edit_text(f"❌ Failed to fetch positions: {error_msg}")
             return
         
         positions_data = positions.get('result', [])
         
-        if not positions_data:
-            message = "📊 <b>No Open Positions Found</b>\n\n"
-            
-            if portfolio.get('success'):
-                balances = portfolio.get('result', [])
-                if balances:
-                    message += "<b>💰 Wallet Balances:</b>\n"
-                    for balance in balances[:5]:
-                        asset = balance.get('asset_symbol', 'Unknown')
-                        available = balance.get('available_balance', 0)
-                        if float(available) > 0:
-                            message += f"• {asset}: {available}\n"
-                    message += "\n"
-            
-            message += "<i>Start trading by selecting an expiry date!</i>"
-            await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
-            return
+        # Build message with live market data
+        message_parts = []
         
-        # Use enhanced message formatting
-        message = format_enhanced_positions_message(positions_data)
+        if positions_data:
+            # Use the SAME function as "Show Positions" button - with live data
+            positions_message = format_enhanced_positions_with_live_data(positions_data, delta_client)
+            message_parts.append(positions_message)
+        else:
+            message_parts.append("📊 <b>No Open Positions</b>\n\nYou currently have no active positions.")
         
+        # Add portfolio balance
         if portfolio.get('success'):
             balances = portfolio.get('result', [])
             total_balance = sum(float(b.get('available_balance', 0)) for b in balances)
             if total_balance > 0:
-                message += f"\n<b>💰 Total Portfolio Value:</b> ₹{total_balance:,.2f}"
+                message_parts.append(f"💰 <b>Total Portfolio Value:</b> ₹{total_balance:,.2f}")
         
-        await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
+        # Combine all parts
+        full_message = "\n\n".join(message_parts)
+        
+        await loading_msg.edit_text(full_message, parse_mode=ParseMode.HTML)
         
     except Exception as e:
         logger.error(f"Error in positions_command: {e}", exc_info=True)
-        await update.message.reply_text("❌ Failed to fetch positions. Use /debug for more info.")
+        await update.message.reply_text("❌ Failed to fetch positions.")
 
 async def stoploss_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enhanced /stoploss command with position selection"""
