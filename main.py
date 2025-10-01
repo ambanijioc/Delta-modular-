@@ -464,6 +464,40 @@ async def simple_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     await update.message.reply_text("Simple test:", reply_markup=reply_markup)
 
+async def compare_positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Compare position formatting methods"""
+    try:
+        loading_msg = await update.message.reply_text("🔄 Comparing position formats...")
+        
+        positions = delta_client.force_enhance_positions()
+        positions_data = positions.get('result', [])
+        
+        if not positions_data:
+            await loading_msg.edit_text("❌ No positions to compare")
+            return
+        
+        # Format WITHOUT live data
+        message_old = format_enhanced_positions_with_live_data(positions_data, None)
+        
+        # Format WITH live data  
+        message_new = format_enhanced_positions_with_live_data(positions_data, delta_client)
+        
+        comparison = f"<b>🔍 Position Format Comparison</b>\n\n"
+        comparison += f"<b>WITHOUT Live Data:</b>\n{message_old}\n\n"
+        comparison += f"<b>WITH Live Data:</b>\n{message_new}"
+        
+        # Send in parts if too long
+        if len(comparison) > 4000:
+            await loading_msg.edit_text(f"<b>WITHOUT Live Data:</b>\n{message_old}", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(f"<b>WITH Live Data:</b>\n{message_new}", parse_mode=ParseMode.HTML)
+        else:
+            await loading_msg.edit_text(comparison, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Comparison failed: {e}")
+
+# Add to initialize_bot function
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Clean start command with multi-strike stop-loss"""
     try:
@@ -1690,6 +1724,7 @@ async def initialize_bot():
         application.add_handler(CommandHandler("testticker", test_ticker_command))
         application.add_handler(CommandHandler("checkmethod", check_method_command))
         application.add_handler(CommandHandler("debugorder", debug_order_details_command))
+        application.add_handler(CommandHandler("comparepos", compare_positions_command))
         application.add_handler(CommandHandler("checkperms", check_permissions_command))
         application.add_handler(CommandHandler("testcorrect", test_correct_stop_command))
         application.add_handler(CommandHandler("simpletest", simple_test_command))
