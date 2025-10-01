@@ -364,6 +364,124 @@ async def show_positions_callback(update: Update, context: ContextTypes.DEFAULT_
         logger.error(f"Error in show_positions_callback: {e}", exc_info=True)
         await query.edit_message_text("❌ Failed to fetch positions.")
 
+async def portfolio_summary_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle portfolio summary button click"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        logger.info("💰 Fetching portfolio summary")
+        
+        # Get portfolio and positions data
+        portfolio = delta_client.get_portfolio_summary()
+        positions = delta_client.force_enhance_positions()
+        
+        message_parts = []
+        
+        # Portfolio balances section
+        if portfolio.get('success'):
+            balances = portfolio.get('result', [])
+            
+            message_parts.append("<b>💰 Portfolio Summary</b>\n")
+            
+            total_balance = 0
+            balance_details = []
+            
+            for balance in balances:
+                asset = balance.get('asset_symbol', 'Unknown')
+                available = float(balance.get('available_balance', 0))
+                total_balance += available
+                
+                if available > 0.01:  # Only show assets with meaningful balance
+                    if asset == 'USDT':
+                        balance_details.append(f"• {asset}: ${available:,.2f}")
+                    else:
+                        balance_details.append(f"• {asset}: ₹{available:,.2f}")
+            
+            if balance_details:
+                message_parts.append("<b>💵 Balances:</b>")
+                message_parts.append("\n".join(balance_details))
+                message_parts.append(f"\n<b>📊 Total Value: ₹{total_balance:,.2f}</b>")
+            else:
+                message_parts.append("💵 <b>No significant balances found</b>")
+        
+        # Positions summary
+        if positions.get('success'):
+            positions_data = positions.get('result', [])
+            
+            if positions_data:
+                message_parts.append(f"\n<b>📈 Active Positions: {len(positions_data)}</b>")
+                
+                total_pnl = 0
+                long_positions = 0
+                short_positions = 0
+                
+                for position in positions_data:
+                    size = float(position.get('size', 0))
+                    pnl = float(position.get('unrealized_pnl', 0))
+                    
+                    # Get live PnL if available
+                    product = position.get('product', {})
+                    product_id = product.get('id') or position.get('product_id')
+                    
+                    if pnl == 0 and product_id:
+                        try:
+                            live_data = delta_client.get_live_ticker(product_id)
+                            if live_data and live_data.get('mark_price'):
+                                mark_price = float(live_data.get('mark_price', 0))
+                                entry_price = float(position.get('entry_price', 0))
+                                
+                                if mark_price > 0 and entry_price > 0:
+                                    if size > 0:  # Long position
+                                        pnl = (mark_price - entry_price) * abs(size)
+                                    else:  # Short position
+                                        pnl = (entry_price - mark_price) * abs(size)
+                        except Exception as e:
+                            logger.error(f"Error calculating live PnL: {e}")
+                    
+                    total_pnl += pnl
+                    
+                    if size > 0:
+                        long_positions += 1
+                    elif size < 0:
+                        short_positions += 1
+                
+                pnl_emoji = "🟢" if total_pnl >= 0 else "🔴"
+                message_parts.append(f"• Long: {long_positions} | Short: {short_positions}")
+                message_parts.append(f"• Total PnL: {pnl_emoji} ${total_pnl:,.2f}")
+            else:
+                message_parts.append(f"\n<b>📈 No Active Positions</b>")
+        
+        # Performance metrics
+        message_parts.append(f"\n<b>📊 Quick Stats:</b>")
+        
+        if portfolio.get('success') and positions.get('success'):
+            positions_count = len(positions.get('result', []))
+            message_parts.append(f"• Open Trades: {positions_count}")
+            message_parts.append(f"• Account Status: {'🟢 Active' if total_balance > 0 else '🔴 Low Balance'}")
+        
+        # Combine all parts
+        full_message = "\n".join(message_parts)
+        
+        # Add navigation buttons
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        keyboard = [
+            [InlineKeyboardButton("📊 View Positions", callback_data="show_positions")],
+            [InlineKeyboardButton("🛡️ Add Stop-Loss", callback_data="multi_strike_stoploss")],
+            [InlineKeyboardButton("⬅️ Back to Main Menu", callback_data="back_to_main")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            full_message,
+            parse_mode=ParseMode.HTML,
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in portfolio_summary_callback: {e}", exc_info=True)
+        await query.edit_message_text("❌ Failed to fetch portfolio summary.")
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors"""
     logger.error(f"Update {update} caused error {context.error}", exc_info=context.error)
