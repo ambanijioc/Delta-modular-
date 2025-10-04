@@ -9,71 +9,74 @@ from config.config import DELTA_API_KEY, DELTA_API_SECRET, DELTA_BASE_URL
 
 logger = logging.getLogger(__name__)
 
+# At the top of api/delta_client.py, REMOVE these lines:
+# DELTA_API_KEY = os.getenv('DELTA_API_KEY')
+# DELTA_API_SECRET = os.getenv('DELTA_API_SECRET')
+
+# UPDATE the DeltaClient class:
 class DeltaClient:
-    def __init__(self):
-        self.api_key = DELTA_API_KEY
-        self.api_secret = DELTA_API_SECRET
-        self.base_url = DELTA_BASE_URL
-        self.session = requests.Session()
+    def __init__(self, api_key: str = None, api_secret: str = None):
+        """Initialize Delta client with credentials"""
+        # Use provided credentials or fall back to environment variables
+        self.api_key = api_key or os.getenv('DELTA_API_KEY')
+        self.api_secret = api_secret or os.getenv('DELTA_API_SECRET')
+        self.base_url = "https://api.india.delta.exchange"
         
         if not self.api_key or not self.api_secret:
-            logger.error("❌ Delta API credentials not configured")
-            raise ValueError("Delta API credentials are required")
+            raise ValueError("Delta Exchange API credentials not provided")
+        
+        logger.info(f"Delta client initialized with key: {self.api_key[:8]}...")
     
     def _generate_signature(self, secret: str, message: str) -> str:
-        """Generate HMAC SHA256 signature"""
-        try:
-            message = bytes(message, 'utf-8')
-            secret = bytes(secret, 'utf-8')
-            hash_obj = hmac.new(secret, message, hashlib.sha256)
-            return hash_obj.hexdigest()
-        except Exception as e:
-            logger.error(f"❌ Signature generation failed: {e}")
-            raise
+        """Generate signature - NO CHANGES NEEDED"""
+        return hmac.new(
+            secret.encode('utf-8'),
+            message.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
     
     def _make_request(self, method: str, endpoint: str, params: Dict = None, payload: str = '') -> Dict:
-        """Make authenticated request to Delta Exchange API - fixed signature"""
+        """Make authenticated request - UPDATE to use self.api_key and self.api_secret"""
         try:
             timestamp = str(int(time.time()))
-        
-        # Handle parameters properly for signature
+            
+            # Handle parameters properly for signature
             if params:
-            # URL encode parameters for the actual request
                 query_string = '&'.join([f"{k}={str(v)}" for k, v in params.items()])
                 full_endpoint = f"{endpoint}?{query_string}"
             else:
                 full_endpoint = endpoint
                 query_string = ""
-        
-        # Create signature message - this is critical for GET with params
+            
+            # Create signature message
             if method == 'GET' and query_string:
                 signature_message = f"{method}{timestamp}/v2{endpoint}?{query_string}"
             else:
                 signature_message = f"{method}{timestamp}/v2{endpoint}{payload}"
-        
+            
             logger.info(f"🔐 Signature message: '{signature_message}'")
-        
-            signature = self._generate_signature(DELTA_API_SECRET, signature_message)
-        
+            
+            # USE INSTANCE VARIABLES instead of global constants
+            signature = self._generate_signature(self.api_secret, signature_message)
+            
             headers = {
-                'api-key': DELTA_API_KEY,
+                'api-key': self.api_key,
                 'signature': signature,
                 'timestamp': timestamp,
                 'Content-Type': 'application/json'
             }
-        
-        # Construct the full URL
+            
+            # Rest of the method stays the same...
             if params:
-            # Use proper URL encoding
                 import urllib.parse
                 encoded_params = urllib.parse.urlencode(params, safe='%')
-                url = f"{DELTA_BASE_URL}/v2{endpoint}?{encoded_params}"
+                url = f"{self.base_url}/v2{endpoint}?{encoded_params}"
             else:
-                url = f"{DELTA_BASE_URL}/v2{endpoint}"
-        
+                url = f"{self.base_url}/v2{endpoint}"
+            
             logger.info(f"🌐 Request URL: {url}")
             logger.info(f"📤 Headers: {headers}")
-        
+            
             if method == 'GET':
                 response = requests.get(url, headers=headers, timeout=30)
             elif method == 'POST':
@@ -82,10 +85,10 @@ class DeltaClient:
                 response = requests.delete(url, headers=headers, timeout=30)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
-        
+            
             logger.info(f"📥 Response status: {response.status_code}")
             logger.info(f"📥 Response text: {response.text[:500]}...")
-        
+            
             if response.status_code == 200:
                 return response.json()
             else:
@@ -94,11 +97,13 @@ class DeltaClient:
                     "success": False,
                     "error": f"HTTP {response.status_code}: {response.text}"
                 }
-            
+                
         except Exception as e:
             logger.error(f"❌ Request exception: {e}")
             return {"success": False, "error": str(e)}
-
+    
+    # All other methods remain UNCHANGED
+    
     def get_stop_orders(self, product_id: int = None) -> Dict:
         """Get stop orders - simple method"""
         try:
