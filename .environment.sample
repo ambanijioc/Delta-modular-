@@ -1,5 +1,22 @@
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_CHAT_ID=your_chat_id
-DELTA_API_KEY=your_delta_api_key
-DELTA_API_SECRET=your_delta_api_secret
-WEBHOOK_URL=https://delta-modular.onrender.com
+# Account 1 (Main Account)
+TELEGRAM_BOT_TOKEN_1=your_first_bot_token_here
+DELTA_API_KEY_1=your_first_delta_api_key
+DELTA_API_SECRET_1=your_first_delta_secret
+
+# Account 2 (Secondary Account)
+TELEGRAM_BOT_TOKEN_2=your_second_bot_token_here
+DELTA_API_KEY_2=your_second_delta_api_key
+DELTA_API_SECRET_2=your_second_delta_secret
+
+# Account 3 (Optional - uncomment if needed)
+# TELEGRAM_BOT_TOKEN_3=your_third_bot_token_here
+# DELTA_API_KEY_3=your_third_delta_api_key
+# DELTA_API_SECRET_3=your_third_delta_secret
+
+# Webhook settings
+WEBHOOK_ENABLED=true
+WEBHOOK_URL=https://your-app.onrender.com
+
+# Server settings
+HOST=0.0.0.0
+PORT=10000
