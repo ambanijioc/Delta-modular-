@@ -11,13 +11,13 @@ ACCOUNTS = {
         'account_name': 'Main Trading Account',
         'webhook_path': '/webhook1'  # Unique webhook path for this bot
     },
-    'account2': {
-        'bot_token': 'SECOND_BOT_TOKEN_HERE',  # Get from @BotFather
-        'delta_api_key': 'SECOND_DELTA_API_KEY',
-        'delta_api_secret': 'SECOND_DELTA_API_SECRET',
-        'account_name': 'Secondary Account',
-        'webhook_path': '/webhook2'
-    },
+    #'account2': {
+       # 'bot_token': 'SECOND_BOT_TOKEN_HERE',  # Get from @BotFather
+      #  'delta_api_key': 'SECOND_DELTA_API_KEY',
+    #    'delta_api_secret': 'SECOND_DELTA_API_SECRET',
+      #  'account_name': 'Secondary Account',
+     #   'webhook_path': '/webhook2'
+ #   },
     # Add more accounts as needed (up to 3 for free tier)
     # 'account3': {
     #     'bot_token': 'THIRD_BOT_TOKEN_HERE',
