@@ -35,6 +35,18 @@ from utils.helpers import format_enhanced_positions_message
 from handlers.stoploss_handler import StopLossHandler
 from handlers.multi_stoploss_handler import MultiStrikeStopl0ssHandler
 
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from core.bot_manager import BotManager
+from config.accounts_config import (
+    WEBHOOK_ENABLED, 
+    WEBHOOK_BASE_URL, 
+    SERVER_HOST, 
+    SERVER_PORT,
+    get_enabled_accounts
+)
+
 # Initialize logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
