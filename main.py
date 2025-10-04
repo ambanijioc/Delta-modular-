@@ -141,6 +141,39 @@ position_handler = PositionHandler(delta_client)
 stoploss_handler = StopLossHandler(delta_client)
 multi_stoploss_handler = MultiStrikeStopl0ssHandler(delta_client)
 
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle errors in the bot"""
+    try:
+        logger.error(f"Exception while handling update {update}: {context.error}")
+        
+        # Handle specific error types
+        if isinstance(context.error, telegram.error.TimedOut):
+            logger.warning("⚠️ Telegram API timeout - will retry")
+            # Don't send error message to user as it might timeout again
+            return
+        
+        elif isinstance(context.error, telegram.error.NetworkError):
+            logger.warning("⚠️ Network error - connection issue")
+            return
+        
+        elif isinstance(context.error, telegram.error.RetryAfter):
+            retry_after = context.error.retry_after
+            logger.warning(f"⚠️ Rate limited - retry after {retry_after}s")
+            return
+        
+        # For other errors, try to notify user
+        if update and update.effective_message:
+            try:
+                await update.effective_message.reply_text(
+                    "❌ An error occurred. Please try again in a moment.",
+                    timeout=5  # Short timeout for error messages
+                )
+            except Exception as e:
+                logger.error(f"Failed to send error message: {e}")
+        
+    except Exception as e:
+        logger.error(f"Error in error_handler: {e}")
+
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enhanced callback handler with proper stop-loss routing"""
     try:
