@@ -232,10 +232,17 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enhanced callback handler with proper stop-loss routing"""
     try:
+        delta_client = context.bot_data.get('delta_client')
         query = update.callback_query
         data = query.data
         
         logger.info(f"=== PROCESSING CALLBACK: {data} ===")
+        
+        # Initialize handlers with account-specific delta_client
+        expiry_handler = ExpiryHandler(delta_client)
+        options_handler = OptionsHandler(delta_client)
+        stoploss_handler = StoplossHandler(delta_client)
+        multi_stoploss_handler = MultiStrikeStopl0ssHandler(delta_client)
         
         # Portfolio Summary callback
         if data == "portfolio_summary":
