@@ -675,17 +675,11 @@ async def compare_positions_command(update: Update, context: ContextTypes.DEFAUL
 # Add to initialize_bot function
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Clean start command with multi-strike stop-loss"""
+    """Optimized start command with proper error handling"""
     try:
         logger.info(f"Start command from user: {update.effective_user.id}")
-
-        # Send immediate acknowledgment to prevent timeout perception
-        initial_msg = await update.message.reply_text(
-            "🔄 Loading...",
-            timeout=5  # Short timeout for acknowledgment
-        )
-
-        # Fetch data with timeout protection
+        
+        # Fetch portfolio data with timeout protection
         import asyncio
         
         try:
@@ -700,10 +694,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Portfolio fetch error: {e}")
             portfolio = {"success": False}
-            
-        # Get portfolio summary
-        portfolio = delta_client.get_portfolio_summary()
         
+        # Build message
         message_parts = []
         
         # Add portfolio balance
@@ -718,7 +710,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 <b>Available Actions:</b>
 • 📊 View your current positions
-• 📈 Start new options trading  
+• 📈 Start new options trading
 • 🛡️ Multi-strike stop-loss protection
 • 💰 Check portfolio summary
 
@@ -727,22 +719,20 @@ Choose an action below:"""
         message_parts.append(welcome_section)
         full_message = "\n\n".join(message_parts)
         
-        # Updated keyboard with new button
+        # Create keyboard
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        
         keyboard = [
             [InlineKeyboardButton("📅 Select Expiry", callback_data="select_expiry")],
             [InlineKeyboardButton("📊 Show Positions", callback_data="show_positions")],
             [InlineKeyboardButton("🛡️ Multi-Strike Stop-Loss", callback_data="multi_strike_stoploss")],
             [InlineKeyboardButton("💰 Portfolio Summary", callback_data="portfolio_summary")]
         ]
-        
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Edit the initial message with timeout
+        # Send message with timeout protection
         try:
             await asyncio.wait_for(
-                initial_msg.edit_text(
+                update.message.reply_text(
                     full_message,
                     parse_mode=ParseMode.HTML,
                     reply_markup=reply_markup
@@ -750,23 +740,17 @@ Choose an action below:"""
                 timeout=10.0
             )
         except asyncio.TimeoutError:
-            logger.error("Failed to edit message - timeout")
-            # Try sending a new message instead
-            await update.message.reply_text(
-                "❌ Response timeout. Please try /start again.",
-                timeout=5
-            )
+            logger.error("Failed to send message - timeout")
+            # Try sending a simpler message
+            try:
+                await update.message.reply_text("❌ Response timeout. Please try /start again.")
+            except:
+                pass
         
-    except telegram.error.TimedOut:
-        logger.error("Telegram API timeout in start_command")
-        # Don't try to send another message as it will likely timeout too
     except Exception as e:
         logger.error(f"Error in start_command: {e}", exc_info=True)
         try:
-            await update.message.reply_text(
-                "❌ An error occurred. Please try again.",
-                timeout=5
-            )
+            await update.message.reply_text("❌ An error occurred. Please try again.")
         except:
             pass
 
