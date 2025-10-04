@@ -678,7 +678,29 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Clean start command with multi-strike stop-loss"""
     try:
         logger.info(f"Start command from user: {update.effective_user.id}")
+
+        # Send immediate acknowledgment to prevent timeout perception
+        initial_msg = await update.message.reply_text(
+            "🔄 Loading...",
+            timeout=5  # Short timeout for acknowledgment
+        )
+
+        # Fetch data with timeout protection
+        import asyncio
         
+        try:
+            # Run portfolio fetch with timeout
+            portfolio = await asyncio.wait_for(
+                asyncio.to_thread(delta_client.get_portfolio_summary),
+                timeout=10.0
+            )
+        except asyncio.TimeoutError:
+            logger.error("Portfolio fetch timed out")
+            portfolio = {"success": False}
+        except Exception as e:
+            logger.error(f"Portfolio fetch error: {e}")
+            portfolio = {"success": False}
+            
         # Get portfolio summary
         portfolio = delta_client.get_portfolio_summary()
         
@@ -717,15 +739,36 @@ Choose an action below:"""
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
-            full_message,
-            parse_mode=ParseMode.HTML,
-            reply_markup=reply_markup
-        )
+        # Edit the initial message with timeout
+        try:
+            await asyncio.wait_for(
+                initial_msg.edit_text(
+                    full_message,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup
+                ),
+                timeout=10.0
+            )
+        except asyncio.TimeoutError:
+            logger.error("Failed to edit message - timeout")
+            # Try sending a new message instead
+            await update.message.reply_text(
+                "❌ Response timeout. Please try /start again.",
+                timeout=5
+            )
         
+    except telegram.error.TimedOut:
+        logger.error("Telegram API timeout in start_command")
+        # Don't try to send another message as it will likely timeout too
     except Exception as e:
         logger.error(f"Error in start_command: {e}", exc_info=True)
-        await update.message.reply_text("❌ An error occurred.")
+        try:
+            await update.message.reply_text(
+                "❌ An error occurred. Please try again.",
+                timeout=5
+            )
+        except:
+            pass
 
 async def debug_order_details_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show raw order details for debugging"""
