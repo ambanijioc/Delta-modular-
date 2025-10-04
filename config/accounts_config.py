@@ -26,7 +26,7 @@ ACCOUNTS = {
         'delta_api_secret': os.getenv('DELTA_API_SECRET_2', 'YOUR_DELTA_SECRET_2'),
         'account_name': 'Secondary Trading Account',
         'webhook_path': None,
-        'enabled': True
+        'enabled': False
     },
     
     # Account 3 - Optional third account (commented out by default)
