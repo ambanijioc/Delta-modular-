@@ -1842,8 +1842,23 @@ async def initialize_bot():
     
     try:
         logger.info("🚀 Initializing bot application...")
+        # Configure custom request with larger pool
+        request = HTTPXRequest(
+            connection_pool_size=20,  # Increase from default 1
+            pool_timeout=30.0,        # Increase timeout to 30 seconds
+            read_timeout=30.0,        # Read timeout
+            write_timeout=30.0,       # Write timeout
+            connect_timeout=30.0      # Connection timeout
+        )
         
-        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+        # Create application with custom request configuration
+        application = (
+            Application.builder()
+            .token(TELEGRAM_BOT_TOKEN)
+            .request(request)
+            .concurrent_updates(True)  # Enable concurrent update processing
+            .build()
+        )
         
         # Add all handlers
         application.add_handler(CommandHandler("checkhandlers", check_handlers_command))
@@ -1880,7 +1895,10 @@ async def initialize_bot():
         logger.info("✅ All handlers registered")
         
         await application.initialize()
-        logger.info("✅ Bot application initialized")
+        await application.start()
+        
+        logger.info("✅ Bot initialized successfully with enhanced connection pool")
+        return application
         
         webhook_success = await setup_webhook()
         if webhook_success:
