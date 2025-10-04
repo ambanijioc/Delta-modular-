@@ -4,6 +4,7 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ParseMode
+from telegram.request import HTTPXRequest
 import tornado.web
 import tornado.ioloop
 import tornado.httpserver
