@@ -58,6 +58,313 @@ except:
     handlers_module = None
     logger.warning("⚠️ Could not load handlers module")
 
+# ==================== HANDLER FUNCTIONS (ADD THESE) ====================
+
+# Import your handler modules
+from handlers.expiry_handler import ExpiryHandler
+from handlers.options_handler import OptionsHandler
+try:
+    from handlers.multi_stoploss_handler import MultiStrikeStopl0ssHandler
+except:
+    MultiStrikeStopl0ssHandler = None
+
+# Initialize handler instances (will be created per bot)
+expiry_handler = None
+options_handler = None
+multi_stoploss_handler = None
+
+def init_handlers(delta_client):
+    """Initialize handlers with delta client"""
+    global expiry_handler, options_handler, multi_stoploss_handler
+    expiry_handler = ExpiryHandler(delta_client)
+    options_handler = OptionsHandler(delta_client)
+    if MultiStrikeStopl0ssHandler:
+        multi_stoploss_handler = MultiStrikeStopl0ssHandler(delta_client)
+
+# Command handlers
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start command"""
+    try:
+        delta_client = context.application.bot_data.get('delta_client')
+        account_name = context.application.bot_data.get('account_name', 'Trading Account')
+        
+        logger.info(f"Start command from user: {update.effective_user.id}")
+        
+        # Get portfolio
+        import asyncio
+        try:
+            portfolio = await asyncio.wait_for(
+                asyncio.to_thread(delta_client.get_portfolio_summary),
+                timeout=10.0
+            )
+        except:
+            portfolio = {"success": False}
+        
+        # Build message
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from telegram.constants import ParseMode
+        
+        message_parts = []
+        message_parts.append(f"<b>🏦 {account_name}</b>")
+        
+        if portfolio.get('success'):
+            balances = portfolio.get('result', [])
+            total_balance = sum(float(b.get('available_balance', 0)) for b in balances)
+            if total_balance > 0:
+                message_parts.append(f"💰 <b>Portfolio Value:</b> ₹{total_balance:,.2f}")
+        
+        welcome = """
+<b>🚀 Welcome to Delta Options Bot!</b>
+
+<b>Available Actions:</b>
+• 📊 View your current positions
+• 📈 Start new options trading
+• 🛡️ Multi-strike stop-loss protection
+• 💰 Check portfolio summary
+
+Choose an action below:"""
+        
+        message_parts.append(welcome)
+        full_message = "\n\n".join(message_parts)
+        
+        keyboard = [
+            [InlineKeyboardButton("📅 Select Expiry", callback_data="select_expiry")],
+            [InlineKeyboardButton("📊 Show Positions", callback_data="show_positions")],
+            [InlineKeyboardButton("🛡️ Multi-Strike Stop-Loss", callback_data="multi_strike_stoploss")],
+            [InlineKeyboardButton("💰 Portfolio Summary", callback_data="portfolio_summary")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(full_message, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+        
+    except Exception as e:
+        logger.error(f"Error in start_command: {e}", exc_info=True)
+        await update.message.reply_text("❌ An error occurred.")
+
+async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Positions command"""
+    try:
+        delta_client = context.application.bot_data.get('delta_client')
+        account_name = context.application.bot_data.get('account_name', 'Trading Account')
+        
+        from utils.helpers import format_enhanced_positions_with_live_data
+        from telegram.constants import ParseMode
+        
+        loading_msg = await update.message.reply_text("🔄 Fetching positions...")
+        
+        positions = delta_client.force_enhance_positions()
+        portfolio = delta_client.get_portfolio_summary()
+        
+        if not positions.get('success'):
+            await loading_msg.edit_text("❌ Failed to fetch positions.")
+            return
+        
+        positions_data = positions.get('result', [])
+        message_parts = [f"<b>🏦 {account_name}</b>\n"]
+        
+        if positions_data:
+            positions_message = format_enhanced_positions_with_live_data(positions_data, delta_client)
+            message_parts.append(positions_message)
+        else:
+            message_parts.append("📊 <b>No Open Positions</b>")
+        
+        if portfolio.get('success'):
+            balances = portfolio.get('result', [])
+            total_balance = sum(float(b.get('available_balance', 0)) for b in balances)
+            if total_balance > 0:
+                message_parts.append(f"💰 <b>Total: ₹{total_balance:,.2f}</b>")
+        
+        await loading_msg.edit_text("\n\n".join(message_parts), parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in positions_command: {e}")
+        await update.message.reply_text("❌ Error")
+
+async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Orders command"""
+    try:
+        delta_client = context.application.bot_data.get('delta_client')
+        from telegram.constants import ParseMode
+        
+        loading_msg = await update.message.reply_text("🔄 Fetching orders...")
+        
+        stop_orders = delta_client.get_stop_orders()
+        
+        if not stop_orders.get('success'):
+            await loading_msg.edit_text("❌ Failed to fetch orders.")
+            return
+        
+        orders_data = stop_orders.get('result', [])
+        
+        if not orders_data:
+            await loading_msg.edit_text("📋 No active stop orders found.")
+            return
+        
+        message = "<b>📋 Active Stop Orders</b>\n\n"
+        for i, order in enumerate(orders_data[:10], 1):
+            product_symbol = order.get('product_symbol', 'Unknown')
+            side = order.get('side', 'Unknown')
+            size = order.get('size', 0)
+            stop_price = order.get('stop_price', 'N/A')
+            
+            message += f"<b>{i}. {product_symbol}</b>\n"
+            message += f"   Side: {side.upper()}\n"
+            message += f"   Size: {size}\n"
+            message += f"   Stop: ${stop_price}\n\n"
+        
+        await loading_msg.edit_text(message, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        logger.error(f"Error in orders_command: {e}")
+        await update.message.reply_text("❌ Error")
+
+async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Portfolio command"""
+    await update.message.reply_text("Use /start to see portfolio summary")
+
+async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug command"""
+    account_id = context.application.bot_data.get('account_id', 'unknown')
+    account_name = context.application.bot_data.get('account_name', 'Unknown')
+    
+    from telegram.constants import ParseMode
+    
+    message = f"""<b>🐛 Debug Info</b>
+
+<b>Account:</b> {account_name}
+<b>Account ID:</b> {account_id}
+<b>User ID:</b> {update.effective_user.id}
+<b>Chat ID:</b> {update.effective_chat.id}"""
+    
+    await update.message.reply_text(message, parse_mode=ParseMode.HTML)
+
+async def stoploss_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Stoploss command"""
+    await update.message.reply_text("Use the /start menu to access stop-loss features")
+
+async def cancelstops_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancel stops command"""
+    await update.message.reply_text("Use the /start menu to manage stop orders")
+
+# Callback handler
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Main callback handler"""
+    try:
+        query = update.callback_query
+        data = query.data
+        
+        delta_client = context.application.bot_data.get('delta_client')
+        
+        # Initialize handlers if not done
+        global expiry_handler, options_handler, multi_stoploss_handler
+        if not expiry_handler:
+            init_handlers(delta_client)
+        
+        logger.info(f"Processing callback: {data}")
+        
+        if data == "select_expiry":
+            await expiry_handler.show_expiry_selection(update, context)
+        elif data.startswith("expiry_"):
+            await expiry_handler.handle_expiry_selection(update, context)
+        elif data.startswith("strategy_"):
+            await options_handler.handle_strategy_selection(update, context)
+        elif data == "show_positions":
+            await show_positions_callback(update, context)
+        elif data == "multi_strike_stoploss" and multi_stoploss_handler:
+            await multi_stoploss_handler.show_multi_strike_menu(update, context)
+        elif data.startswith("ms_") and multi_stoploss_handler:
+            if data.startswith("ms_toggle_"):
+                await multi_stoploss_handler.handle_position_toggle(update, context)
+            elif data == "ms_proceed":
+                await multi_stoploss_handler.handle_proceed_to_prices(update, context)
+            elif data == "ms_clear":
+                await multi_stoploss_handler.handle_clear_selection(update, context)
+            elif data == "ms_cancel":
+                await multi_stoploss_handler.handle_cancel(update, context)
+        elif data == "portfolio_summary":
+            await portfolio_summary_callback(update, context)
+        elif data == "back_to_main":
+            await back_to_main_callback(update, context)
+        else:
+            await query.answer("Unknown option")
+        
+    except Exception as e:
+        logger.error(f"Error in callback_handler: {e}", exc_info=True)
+
+async def show_positions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show positions callback"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        delta_client = context.application.bot_data.get('delta_client')
+        account_name = context.application.bot_data.get('account_name', 'Trading Account')
+        
+        from utils.helpers import format_enhanced_positions_with_live_data
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from telegram.constants import ParseMode
+        
+        positions = delta_client.force_enhance_positions()
+        
+        if not positions.get('success'):
+            await query.edit_message_text("❌ Failed to fetch positions.")
+            return
+        
+        positions_data = positions.get('result', [])
+        
+        if not positions_data:
+            message = f"<b>🏦 {account_name}</b>\n\n📊 No Open Positions"
+        else:
+            header = f"<b>🏦 {account_name}</b>\n\n"
+            positions_message = format_enhanced_positions_with_live_data(positions_data, delta_client)
+            message = header + positions_message
+        
+        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data="back_to_main")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(message, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+        
+    except Exception as e:
+        logger.error(f"Error: {e}")
+
+async def portfolio_summary_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Portfolio summary"""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Portfolio summary - under construction")
+
+async def back_to_main_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Back to main"""
+    query = update.callback_query
+    await query.answer()
+    # Simulate start command
+    update.message = query.message
+    await start_command(update, context)
+
+# Message handler
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text messages"""
+    try:
+        delta_client = context.application.bot_data.get('delta_client')
+        
+        global expiry_handler, options_handler, multi_stoploss_handler
+        if not expiry_handler:
+            init_handlers(delta_client)
+        
+        if context.user_data.get('waiting_for_multi_trigger_percentage') and multi_stoploss_handler:
+            await multi_stoploss_handler.handle_trigger_percentage_input(update, context)
+        elif context.user_data.get('waiting_for_multi_limit_percentage') and multi_stoploss_handler:
+            await multi_stoploss_handler.handle_limit_percentage_input(update, context)
+        elif context.user_data.get('waiting_for_lot_size'):
+            await options_handler.handle_lot_size_input(update, context)
+        else:
+            await update.message.reply_text("Use /start to see available options")
+            
+    except Exception as e:
+        logger.error(f"Error in message_handler: {e}")
+
+# ==================== END OF HANDLER FUNCTIONS ===================
+
 # ==================== INITIALIZE BOTS ====================
 
 async def initialize_bots():
