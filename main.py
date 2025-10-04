@@ -155,17 +155,19 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         logger.error(f"Exception while handling update {update}: {context.error}")
         
+        # Import error types
+        from telegram.error import TimedOut, NetworkError, RetryAfter
+        
         # Handle specific error types
-        if isinstance(context.error, telegram.error.TimedOut):
+        if isinstance(context.error, TimedOut):
             logger.warning("⚠️ Telegram API timeout - will retry")
-            # Don't send error message to user as it might timeout again
             return
         
-        elif isinstance(context.error, telegram.error.NetworkError):
+        elif isinstance(context.error, NetworkError):
             logger.warning("⚠️ Network error - connection issue")
             return
         
-        elif isinstance(context.error, telegram.error.RetryAfter):
+        elif isinstance(context.error, RetryAfter):
             retry_after = context.error.retry_after
             logger.warning(f"⚠️ Rate limited - retry after {retry_after}s")
             return
@@ -174,8 +176,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update and update.effective_message:
             try:
                 await update.effective_message.reply_text(
-                    "❌ An error occurred. Please try again in a moment.",
-                    timeout=5  # Short timeout for error messages
+                    "❌ An error occurred. Please try again in a moment."
                 )
             except Exception as e:
                 logger.error(f"Failed to send error message: {e}")
