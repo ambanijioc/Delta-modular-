@@ -44,6 +44,47 @@ logger = logging.getLogger(__name__)
 application = None
 webhook_monitor_active = False
 
+def start_webhook_monitor():
+    """Start webhook health monitor with proper async handling"""
+    import threading
+    import time
+    import requests
+    
+    def monitor_loop():
+        """Monitor loop that runs in separate thread - uses requests instead of async"""
+        while True:
+            try:
+                logger.info("🔍 Checking webhook health...")
+                
+                # Use synchronous requests instead of async
+                response = requests.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getWebhookInfo",
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    webhook_data = response.json()
+                    pending_updates = webhook_data.get('result', {}).get('pending_update_count', 0)
+                    logger.info(f"✅ Webhook healthy - Pending: {pending_updates}")
+                    
+                    # Alert if too many pending updates
+                    if pending_updates > 10:
+                        logger.warning(f"⚠️ High pending updates: {pending_updates}")
+                else:
+                    logger.error(f"❌ Webhook check failed: HTTP {response.status_code}")
+                
+                # Wait 5 minutes between checks
+                time.sleep(300)
+                
+            except Exception as e:
+                logger.error(f"❌ Webhook monitor error: {e}")
+                time.sleep(60)  # Wait 1 minute before retrying on error
+    
+    # Start monitor in background daemon thread
+    monitor_thread = threading.Thread(target=monitor_loop, daemon=True, name="WebhookMonitor")
+    monitor_thread.start()
+    logger.info("✅ Webhook monitor started")
+
 def webhook_health_monitor():
     """Background thread to monitor webhook health"""
     global webhook_monitor_active, application
