@@ -334,12 +334,63 @@ async def portfolio_summary_callback(update: Update, context: ContextTypes.DEFAU
     await query.edit_message_text("Portfolio summary - under construction")
 
 async def back_to_main_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Back to main"""
-    query = update.callback_query
-    await query.answer()
-    # Simulate start command
-    update.message = query.message
-    await start_command(update, context)
+    """Back to main - fixed version"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        delta_client = context.application.bot_data.get('delta_client')
+        account_name = context.application.bot_data.get('account_name', 'Trading Account')
+        
+        # Get portfolio
+        import asyncio
+        try:
+            portfolio = await asyncio.wait_for(
+                asyncio.to_thread(delta_client.get_portfolio_summary),
+                timeout=10.0
+            )
+        except:
+            portfolio = {"success": False}
+        
+        # Build message
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        from telegram.constants import ParseMode
+        
+        message_parts = []
+        message_parts.append(f"<b>🏦 {account_name}</b>")
+        
+        if portfolio.get('success'):
+            balances = portfolio.get('result', [])
+            total_balance = sum(float(b.get('available_balance', 0)) for b in balances)
+            if total_balance > 0:
+                message_parts.append(f"💰 <b>Portfolio Value:</b> ₹{total_balance:,.2f}")
+        
+        welcome = """
+<b>🚀 Welcome to Delta Options Bot!</b>
+
+<b>Available Actions:</b>
+• 📊 View your current positions
+• 📈 Start new options trading
+• 🛡️ Multi-strike stop-loss protection
+• 💰 Check portfolio summary
+
+Choose an action below:"""
+        
+        message_parts.append(welcome)
+        full_message = "\n\n".join(message_parts)
+        
+        keyboard = [
+            [InlineKeyboardButton("📅 Select Expiry", callback_data="select_expiry")],
+            [InlineKeyboardButton("📊 Show Positions", callback_data="show_positions")],
+            [InlineKeyboardButton("🛡️ Multi-Strike Stop-Loss", callback_data="multi_strike_stoploss")],
+            [InlineKeyboardButton("💰 Portfolio Summary", callback_data="portfolio_summary")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(full_message, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+        
+    except Exception as e:
+        logger.error(f"Error in back_to_main_callback: {e}", exc_info=True)
 
 # Message handler
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
