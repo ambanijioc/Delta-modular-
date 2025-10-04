@@ -35,8 +35,8 @@ from handlers.multi_stoploss_handler import MultiStrikeStopl0ssHandler
 
 # Initialize logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
