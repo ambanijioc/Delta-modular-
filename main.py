@@ -14,6 +14,8 @@ from telegram.ext import (
 from telegram.constants import ParseMode
 from telegram.error import TimedOut, NetworkError, RetryAfter
 from telegram.request import HTTPXRequest
+from bot_manager import BotManager
+from config.accounts_config import ACCOUNTS, WEBHOOK_URL, WEBHOOK_PORT
 import tornado.web
 import tornado.ioloop
 import tornado.httpserver
@@ -39,6 +41,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+bot_manager = None
 
 # Global application instance
 application = None
@@ -728,7 +732,11 @@ async def compare_positions_command(update: Update, context: ContextTypes.DEFAUL
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Optimized start command with proper error handling"""
     try:
-        logger.info(f"Start command from user: {update.effective_user.id}")
+        # GET DELTA CLIENT FROM CONTEXT (injected by bot manager)
+        delta_client = context.bot_data.get('delta_client')
+        account_name = context.bot_data.get('account_name', 'Unknown')
+        
+        logger.info(f"Start command from user: {update.effective_user.id} (Account: {account_name})")
         
         # Fetch portfolio data with timeout protection
         import asyncio
@@ -745,6 +753,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Portfolio fetch error: {e}")
             portfolio = {"success": False}
+        # Rest of your existing start_command code, but use delta_client variable
+        portfolio = delta_client.get_portfolio_summary()
         
         # Build message
         message_parts = []
@@ -756,7 +766,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if total_balance > 0:
                 message_parts.append(f"💰 <b>Portfolio Value:</b> ₹{total_balance:,.2f}")
         
-        # Main welcome message
+        # Add account identifier
+        message_parts.append(f"<b>📊 Account:</b> {account_name}")
+        
         welcome_section = """<b>🚀 Welcome to Delta Options Bot!</b>
 
 <b>Available Actions:</b>
@@ -1099,7 +1111,10 @@ async def webhook_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show positions with live market data - enhanced version"""
     try:
-        logger.info(f"Positions command from user: {update.effective_user.id}")
+        delta_client = context.bot_data.get('delta_client')
+        account_name = context.bot_data.get('account_name', 'Unknown')
+        
+        logger.info(f"Positions command from user: {update.effective_user.id} (Account: {account_name})")
         
         loading_msg = await update.message.reply_text("🔄 Fetching positions...")
         
@@ -1131,6 +1146,9 @@ async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if total_balance > 0:
                 message_parts.append(f"💰 <b>Total Portfolio Value:</b> ₹{total_balance:,.2f}")
         
+        # Add account name
+        message_parts.append(f"<b>📊 Account:</b> {account_name}")
+        
         # Combine all parts
         full_message = "\n\n".join(message_parts)
         
@@ -1143,6 +1161,9 @@ async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def stoploss_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enhanced /stoploss command with position selection"""
     try:
+        delta_client = context.bot_data.get('delta_client')
+        account_name = context.bot_data.get('account_name', 'Unknown')
+        
         logger.info(f"Stop-loss command from user: {update.effective_user.id}")
         
         # Check if order ID is provided
@@ -1160,6 +1181,9 @@ async def stoploss_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show portfolio summary"""
     try:
+        delta_client = context.bot_data.get('delta_client')
+        account_name = context.bot_data.get('account_name', 'Unknown')
+        
         logger.info(f"Portfolio command from user: {update.effective_user.id}")
         
         loading_msg = await update.message.reply_text("🔄 Fetching portfolio data...")
@@ -1422,6 +1446,9 @@ async def debug_matching_command(update: Update, context: ContextTypes.DEFAULT_T
 async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show active orders - fixed version"""
     try:
+        delta_client = context.bot_data.get('delta_client')
+        account_name = context.bot_data.get('account_name', 'Unknown')
+        
         logger.info(f"Orders command from user: {update.effective_user.id}")
         
         loading_msg = await update.message.reply_text("🔄 Fetching active orders...")
