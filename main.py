@@ -372,6 +372,123 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+def setup_webhook_handlers(app, bot_manager):
+    """Setup webhook handlers for all bots"""
+    import tornado.web
+    
+    class MultiWebhookHandler(tornado.web.RequestHandler):
+        """Handle webhooks for multiple bots"""
+        
+        async def post(self, account_id):
+            """Route webhook to correct bot"""
+            try:
+                logger.info(f"📨 Webhook for account: {account_id}")
+                
+                bot_instance = bot_manager.get_bot(account_id)
+                if not bot_instance:
+                    logger.error(f"❌ Unknown account: {account_id}")
+                    self.set_status(404)
+                    return
+                
+                # Get update data
+                update_data = tornado.escape.json_decode(self.request.body)
+                
+                # Process with correct bot
+                from telegram import Update
+                update = Update.de_json(update_data, bot_instance.application.bot)
+                await bot_instance.application.process_update(update)
+                
+                self.set_status(200)
+                self.write("OK")
+                
+            except Exception as e:
+                logger.error(f"Webhook error: {e}")
+                self.set_status(500)
+    
+    # Add webhook routes for each account
+    webhook_handlers = []
+    for account_id in ACCOUNTS.keys():
+        webhook_path = f"/{account_id}/webhook"
+        webhook_handlers.append((webhook_path, MultiWebhookHandler))
+        logger.info(f"  • Webhook route: {webhook_path}")
+    
+    return webhook_handlers
+
+async def run_bots():
+    """Main function to run all bots"""
+    global bot_manager
+    
+    try:
+        # Create bot manager
+        bot_manager = BotManager()
+        
+        # Start all bots
+        await bot_manager.start_all()
+        
+        # Setup webhooks
+        if WEBHOOK_URL:
+            logger.info("🌐 Setting up webhooks for all bots...")
+            
+            for account_id, bot_instance in bot_manager.bots.items():
+                webhook_url = f"{WEBHOOK_URL}/{account_id}/webhook"
+                await bot_instance.application.bot.set_webhook(webhook_url)
+                logger.info(f"  ✅ Webhook set for {bot_instance.account_name}: {webhook_url}")
+            
+            # Setup Tornado server with multi-webhook support
+            import tornado.web
+            import tornado.ioloop
+            
+            webhook_handlers = setup_webhook_handlers(tornado.web.Application, bot_manager)
+            
+            # Add health check and status endpoints
+            class HealthHandler(tornado.web.RequestHandler):
+                def get(self):
+                    self.write({"status": "healthy", "bots": len(bot_manager.bots)})
+            
+            class UptimeHandler(tornado.web.RequestHandler):
+                def head(self):
+                    self.set_status(200)
+                def get(self):
+                    self.set_status(200)
+            
+            app = tornado.web.Application([
+                *webhook_handlers,
+                ("/health", HealthHandler),
+                ("/uptime", UptimeHandler),
+            ])
+            
+            app.listen(WEBHOOK_PORT)
+            logger.info(f"🌐 Webhook server listening on port {WEBHOOK_PORT}")
+            logger.info("✅ All bots ready!")
+            
+            # Keep running
+            await asyncio.Event().wait()
+        else:
+            # Polling mode
+            logger.info("🔄 Running in polling mode...")
+            # Keep all bots running
+            await asyncio.Event().wait()
+        
+    except KeyboardInterrupt:
+        logger.info("🛑 Shutdown signal received")
+    except Exception as e:
+        logger.error(f"❌ Critical error: {e}")
+    finally:
+        if bot_manager:
+            await bot_manager.stop_all()
+
+def main():
+    """Entry point"""
+    try:
+        asyncio.run(run_bots())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+
+if __name__ == "__main__":
+    main()
+
 async def back_to_main_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle back to main menu"""
     try:
