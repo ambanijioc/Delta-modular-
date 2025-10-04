@@ -1773,8 +1773,15 @@ async def check_permissions_command(update: Update, context: ContextTypes.DEFAUL
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enhanced message handler with multi-strike inputs"""
     try:
+        delta_client = context.bot_data.get('delta_client')
         message_text = update.message.text.strip()
-        logger.info(f"Text message from user {update.effective_user.id}: '{message_text}'")
+        
+        logger.info(f"Text message: '{message_text}'")
+
+        # Initialize handlers
+        stoploss_handler = StoplossHandler(delta_client)
+        multi_stoploss_handler = MultiStrikeStopl0ssHandler(delta_client)
+        options_handler = OptionsHandler(delta_client)
         
         # Check all input states
         if context.user_data.get('waiting_for_multi_trigger_percentage'):
