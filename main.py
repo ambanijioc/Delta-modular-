@@ -1,9 +1,18 @@
 import asyncio
 import logging
 import os
+import telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters
+)
 from telegram.constants import ParseMode
+from telegram.error import TimedOut, NetworkError, RetryAfter
 from telegram.request import HTTPXRequest
 import tornado.web
 import tornado.ioloop
