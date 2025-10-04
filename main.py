@@ -144,60 +144,174 @@ def webhook_health_monitor():
     
     logger.info("🛑 Webhook monitor stopped")
 
-async def setup_webhook():
-    """Enhanced webhook setup with 502 error prevention"""
-    global application
+async def setup_webhooks():
+    """Setup webhooks for all bots"""
+    if not WEBHOOK_ENABLED or not WEBHOOK_BASE_URL:
+        logger.info("Webhooks disabled - running in polling mode")
+        return
     
-    # Construct webhook URL
-    webhook_url = os.getenv('WEBHOOK_URL')
-    if not webhook_url:
-        app_name = os.getenv('RENDER_SERVICE_NAME')
-        external_url = os.getenv('RENDER_EXTERNAL_URL')
+    logger.info("🌐 Setting up webhooks for all bots...")
+    
+    accounts = get_enabled_accounts()
+    
+    for account_id, config in accounts.items():
+        try:
+            bot = bot_manager.get_bot(account_id)
+            webhook_url = f"{WEBHOOK_BASE_URL}{config['webhook_path']}"
+            
+            await bot.bot.set_webhook(
+                url=webhook_url,
+                allowed_updates=["message", "callback_query"]
+            )
+            
+            logger.info(f"✅ Webhook set for {config['account_name']}: {webhook_url}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to set webhook for {account_id}: {e}")
+
+async def start_webhook_server():
+    """Start webhook server using Tornado"""
+    import tornado.web
+    import tornado.ioloop
+    import json
+    from telegram import Update
+    
+    class WebhookHandler(tornado.web.RequestHandler):
+        """Handle webhook requests from Telegram"""
         
-        if external_url:
-            webhook_url = f"{external_url}/{TELEGRAM_BOT_TOKEN}"
-        elif app_name:
-            webhook_url = f"https://{app_name}.onrender.com/{TELEGRAM_BOT_TOKEN}"
-        else:
-            logger.error("❌ Cannot determine webhook URL")
-            return False
+        async def post(self, bot_token):
+            try:
+                # Log webhook receipt
+                content_length = len(self.request.body)
+                logger.info(f"📨 Webhook: {content_length} bytes for token ...{bot_token[-8:]}")
+                
+                # Find which bot this webhook is for
+                account_id = None
+                for acc_id, config in get_enabled_accounts().items():
+                    if config['bot_token'] == bot_token:
+                        account_id = acc_id
+                        break
+                
+                if not account_id:
+                    logger.error(f"❌ Unknown bot token: ...{bot_token[-8:]}")
+                    self.set_status(404)
+                    return
+                
+                # Get the bot application
+                bot = bot_manager.get_bot(account_id)
+                if not bot:
+                    logger.error(f"❌ Bot not found for account: {account_id}")
+                    self.set_status(404)
+                    return
+                
+                # Parse update and process
+                update_data = json.loads(self.request.body)
+                update = Update.de_json(update_data, bot.bot)
+                
+                # Process update asynchronously
+                asyncio.create_task(bot.process_update(update))
+                
+                self.set_status(200)
+                
+            except Exception as e:
+                logger.error(f"❌ Webhook error: {e}", exc_info=True)
+                self.set_status(500)
+
+    class MainHandler(tornado.web.RequestHandler):
+        """Main page handler"""
+        def get(self):
+            user_agent = self.request.headers.get('User-Agent', 'Unknown')
+            logger.info(f"Root request from {self.request.remote_ip} - User-Agent: {user_agent}")
+            
+            self.write(f"""
+                <html>
+                <head><title>Delta Multi-Account Bot</title></head>
+                <body>
+                    <h1>🤖 Delta Multi-Account Options Bot</h1>
+                    <p>✅ Bot is running with {len(get_enabled_accounts())} account(s)</p>
+                    <h2>Active Accounts:</h2>
+                    <ul>
+                        {''.join([f"<li>{config['account_name']}</li>" for config in get_enabled_accounts().values()])}
+                    </ul>
+                    <p><em>Bot is operational. Send commands to your Telegram bot.</em></p>
+                </body>
+                </html>
+            """)
+    class HealthHandler(tornado.web.RequestHandler):
+        """Health check endpoint"""
+        def get(self):
+            self.write({"status": "healthy", "accounts": len(get_enabled_accounts())})
+        
+        def head(self):
+            self.set_status(200)
     
-    logger.info(f"🔗 Setting webhook to: {webhook_url}")
+    # Create Tornado application with routes for each bot
+    routes = [
+        (r"/", MainHandler),
+        (r"/health", HealthHandler),
+        (r"/uptime", HealthHandler),  # For UptimeRobot
+    ]
+    
+    # Add webhook route for each bot
+    for config in get_enabled_accounts().values():
+        webhook_path = config['webhook_path']
+        routes.append((webhook_path, WebhookHandler, {'bot_token': config['bot_token']}))
+    
+    app = tornado.web.Application(routes)
+    app.listen(SERVER_PORT, SERVER_HOST)
+    
+    logger.info(f"🌐 Server listening on {SERVER_HOST}:{SERVER_PORT}")
+    logger.info("✅ Bot ready! Available endpoints:")
+    logger.info(f"  • / (main page)")
+    logger.info(f"  • /uptime (UptimeRobot endpoint)")
+    logger.info(f"  • /health (health check)")
+    for config in get_enabled_accounts().values():
+        logger.info(f"  • {config['webhook_path']} ({config['account_name']})")
+
+async def main():
+    """Main function to run all bots"""
+    global bot_manager
     
     try:
-        # Clear existing webhook and pending updates
-        await application.bot.delete_webhook(drop_pending_updates=True)
-        logger.info("🧹 Cleared existing webhook and dropped pending updates")
+        # Initialize bot manager
+        bot_manager = BotManager()
         
-        # Wait before setting new webhook
-        await asyncio.sleep(5)
+        # Start all bots
+        await bot_manager.start_all_bots()
         
-        # Set new webhook with specific parameters to prevent 502s
-        success = await application.bot.set_webhook(
-            url=webhook_url,
-            allowed_updates=['message', 'callback_query'],
-            drop_pending_updates=True,
-            max_connections=2
-        )
-        
-        if success:
-            await asyncio.sleep(2)  # Wait before verification
-            webhook_info = await application.bot.get_webhook_info()
+        # Setup webhooks if enabled
+        if WEBHOOK_ENABLED and WEBHOOK_BASE_URL:
+            await setup_webhooks()
+            await start_webhook_server()
             
-            if webhook_info.url == webhook_url:
-                logger.info("✅ Webhook verified successfully")
-                return True
-            else:
-                logger.error(f"❌ Webhook verification failed")
-                return False
+            # Keep running
+            while True:
+                await asyncio.sleep(60)
         else:
-            logger.error("❌ Failed to set webhook")
-            return False
+            # Run in polling mode (not recommended for multiple bots)
+            logger.warning("⚠️ Running in polling mode - not ideal for multiple bots")
+            logger.info("🚀 All bots running in polling mode. Press Ctrl+C to stop.")
             
+            # Keep running
+            while True:
+                await asyncio.sleep(60)
+        
+    except KeyboardInterrupt:
+        logger.info("🛑 Shutting down all bots...")
     except Exception as e:
-        logger.error(f"❌ Webhook setup failed: {e}")
-        return False
+        logger.error(f"❌ Critical error: {e}", exc_info=True)
+    finally:
+        if bot_manager:
+            await bot_manager.stop_all_bots()
+        logger.info("👋 Goodbye!")
 
+if __name__ == "__main__":
+    # Run the bot
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+        
 # Initialize clients and handlers
 delta_client = DeltaClient()
 telegram_client = TelegramClient(TELEGRAM_BOT_TOKEN)
