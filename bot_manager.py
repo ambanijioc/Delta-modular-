@@ -140,6 +140,18 @@ class BotManager:
         await asyncio.gather(*stop_tasks, return_exceptions=True)
         
         logger.info("✅ All bots stopped")
+
+    async def log_resource_usage():
+        """Periodically log resource usage"""
+        while True:
+            await asyncio.sleep(300)  # Every 5 minutes
+        
+            process = psutil.Process(os.getpid())
+            memory_mb = process.memory_info().rss / 1024 / 1024
+            cpu_percent = process.cpu_percent(interval=1)
+        
+            logger.info(f"📊 Resource Usage: {memory_mb:.1f} MB RAM, {cpu_percent:.1f}% CPU")
+        
     
     def get_bot(self, account_id: str) -> BotInstance:
         """Get specific bot instance"""
